@@ -8,13 +8,12 @@
     },
     "id": "geode.loader",
     "version": "@PROJECT_VERSION@@PROJECT_VERSION_SUFFIX@",
-    "name": "Geode",
-    "developer": "Geode Team",
-    "description": "The Geode mod loader",
+    "name": "Geomoded",
+    "developer": "Geomoded Team",
+    "description": "The Geomoded mod loader",
     "links": {
-        "community": "https://discord.com/invite/9e43WMKzhp",
-        "homepage": "https://geode-sdk.org",
-        "source": "https://github.com/geode-sdk/geode"
+        "homepage": "https://github.com/geomoded-sdk/geomoded",
+        "source": "https://github.com/geomoded-sdk/geomoded"
     },
     "resources": {
         "fonts": {
