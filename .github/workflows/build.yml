@@ -158,8 +158,8 @@ jobs:
     - name: Upload Installer
       uses: actions/upload-artifact@v4
       with:
-        name: geode-installer-win
-        path: './installer/windows/geode-installer-win.exe'
+        name: geomoded-installer-win
+        path: './installer/windows/geomoded-installer-win.exe'
 
     - name: Complete Build Debug Info
       uses: ./.github/actions/build-debug-info-post
