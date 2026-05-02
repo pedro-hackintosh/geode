@@ -3,10 +3,10 @@
 # https://github.com/geode-sdk/flash
 
 [project]
-name = "Geode"
+name = "Geomoded"
 version = "" # dont bother
-repository = "https://github.com/geode-sdk/geode"
-tree = "https://github.com/geode-sdk/geode/tree/main"
+repository = "https://https://github.com/pedro-hackintosh/geode"
+tree = "https://https://github.com/pedro-hackintosh/geode/tree/main"
 icon = "loader/resources/logos/geode-circle.png"
 
 [tutorials]
