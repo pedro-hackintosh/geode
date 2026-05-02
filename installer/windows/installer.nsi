@@ -5,7 +5,7 @@
 
 ; settings
     Name "Geode"
-    OutFile "geode-installer-win.exe"
+    OutFile "geomoded-installer-win.exe"
     Unicode true
     InstallDir "$PROGRAMFILES32\Steam\steamapps\common\Geometry Dash\" ; set default path to the most common one
     XPStyle on
@@ -21,10 +21,7 @@
     !define MUI_FINISHPAGE_NOAUTOCLOSE
     !define MUI_UNFINISHPAGE_NOAUTOCLOSE
     !define MUI_FINISHPAGE_NOREBOOTSUPPORT
-    !define MUI_ICON Graphics\logo_inst.ico
-    !define MUI_UNICON Graphics\logo_uninst.ico
-    !define MUI_WELCOMEFINISHPAGE_BITMAP Graphics\banner.bmp
-    !define MUI_UNWELCOMEFINISHPAGE_BITMAP Graphics\banner.bmp
+
 
 ; pages
     !insertmacro MUI_PAGE_WELCOME
