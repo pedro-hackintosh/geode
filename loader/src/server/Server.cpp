@@ -287,13 +287,22 @@ Result<ServerModVersion> ServerModVersion::parse(matjson::Value raw) {
 
     auto res = ServerModVersion();
 
-    res.metadata.setGeodeVersion(root.needs("geode").get<VersionInfo>());
+  VersionInfo ver;
+
+if (root.has("geomoded")) {
+    root.has("geomoded").into(ver);
+}
+else {
+    root.needs("geode").into(ver);
+}
+
+res.metadata.setGeodeVersion(ver);
 
     // Verify target GD version
     auto gd_obj = root.needs("gd");
     std::string gd = "0.000";
     if (gd_obj.hasNullable(GEODE_PLATFORM_SHORT_IDENTIFIER)) {
-        gd = gd_obj.hasNullable(GEODE_PLATFORM_SHORT_IDENTIFIER). get<std::string>();
+        gd = gd_obj.hasNullable(GEODE_PLATFORM_SHORT_IDENTIFIER).get<std::string>();
     }
 
     if (gd != "*") {
