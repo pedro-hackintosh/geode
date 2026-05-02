@@ -6,7 +6,6 @@ permissions:
   deployments: write
   issues: write
   pull-requests: write
-  releases: write
   
 name: Build Binaries
 
