@@ -128,7 +128,9 @@ public:
         }
 
         // If this was an update, delete the old file first
+        // here have hack
         auto geodePath = dirs::getModsDir() / (m_id + ".geode");
+        auto geodePath = dirs::getModsDir() / (m_id + ".geomoded");
         auto data = std::move(response).data();
         auto ok = file::writeBinary(geodePath, data);
         if (!ok) {
