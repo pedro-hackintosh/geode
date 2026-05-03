@@ -130,22 +130,14 @@ public:
         // If this was an update, delete the old file first
 // here have hack
 
-auto data = std::move(response).data();
-
-std::filesystem::path geodePath = dirs::getModsDir() / (m_id + ".geode");
-std::filesystem::path geomodedPath = dirs::getModsDir() / (m_id + ".geomoded");
-
-// escolhe qual usar (ex: flag simples)
-auto modPath = useGeomoded ? geomodedPath : geodePath;
-
-auto ok = file::writeBinary(modPath, data);
-
-if (!ok) {
-    m_status = DownloadStatusError {
-        .details = std::move(ok).unwrapErr(),
-    };
-    return;
-
+        auto geodePath = dirs::getModsDir() / (m_id + ".geomoded");
+        auto data = std::move(response).data();
+        auto ok = file::writeBinary(geodePath, data);
+        if (!ok) {
+            m_status = DownloadStatusError {
+                .details = std::move(ok).unwrapErr(),
+            };
+            return;
         }
 
         auto metadata = ModMetadata::createFromGeodeFile(geodePath);
