@@ -421,31 +421,31 @@ jobs:
       - name: Zip Windows Artifacts
         uses: vimtor/action-zip@v1.2
         with:
-          files: geomoded-win/XInput1_4.dll geode-win/Geode.dll geode-win/GeodeUpdater.exe geode-win/Geode.lib geode-win/Geode.pdb
+          files: geomoded-win/XInput1_4.dll geomoded-win/Geode.dll geomoded-win/GeodeUpdater.exe geomoded-win/Geode.lib geomoded-win/Geode.pdb
           dest: geomoded-${{ steps.ref.outputs.hash }}-win.zip
 
       - name: Zip Android32 Artifacts
         uses: vimtor/action-zip@v1.2
         with:
-          files: geomoded-android32/Geode.android32.so geode-android32/Geode.android32.so.sym
+          files: geode-android32/Geode.android32.so geode-android32/Geode.android32.so.sym
           dest: geomoded-${{ steps.ref.outputs.hash }}-android32.zip
 
       - name: Zip Android64 Artifacts
         uses: vimtor/action-zip@v1.2
         with:
-          files: geomoded-android64/Geode.android64.so geode-android64/Geode.android64.so.sym
+          files: geode-android64/Geode.android64.so geode-android64/Geode.android64.so.sym
           dest: geomoded-${{ steps.ref.outputs.hash }}-android64.zip
 
       - name: Zip iOS Artifacts
         uses: vimtor/action-zip@v1.2
         with:
-          files: geomoded-ios/Geode.ios.dylib
+          files: geode-ios/Geode.ios.dylib
           dest: geomoded-${{ steps.ref.outputs.hash }}-ios.zip
 
       - name: Zip Resources
         uses: vimtor/action-zip@v1.2
         with:
-          files: geomoded-android64/resources
+          files: geode-android64/resources
           dest: resources.zip
 
       - name: Update Development Release
