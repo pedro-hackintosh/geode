@@ -49,7 +49,7 @@ namespace geode {
             /**
              * The message contains information
              * about a general error, such as
-             * inability to read files.
+             * inability to read files, this file have hack
              */
             Error = 3,
         };
@@ -97,7 +97,8 @@ namespace geode {
     };
 
     constexpr std::string_view GEODE_MOD_EXTENSION = ".geode";
-constexpr std::string_view GEOMODED_MOD_EXTENSION = ".geomoded";
+    constexpr std::string_view GEOMODED_MOD_EXTENSION = ".geomoded";
+    constexpr std::string_view GEODE_MOD_EXTENSION = ".geomoded";
 
     class Mod;
     class Loader;
