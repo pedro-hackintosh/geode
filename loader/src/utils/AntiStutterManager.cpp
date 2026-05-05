@@ -76,7 +76,7 @@ void AntiStutterManager::preloadCommonAssets() {
         return;
     }
 
-    preloadedAssets = cocos2d::CCArray::create(16);
+    preloadedAssets = cocos2d::CCArray::create();
 
     log::debug("AntiStutter: Preloading common assets");
 }
