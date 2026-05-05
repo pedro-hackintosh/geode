@@ -232,7 +232,7 @@ jobs:
     - name: Upload Installer
       uses: actions/upload-artifact@v4
       with:
-        name: geode-installer-mac
+        name: geomoded-installer-mac
         path: './installer/mac/geode-installer-mac.pkg'
 
     - name: Complete Build Debug Info
@@ -408,7 +408,7 @@ jobs:
 
       - name: Move Installers
         run: |
-          mv geode-installer-mac/geode-installer-mac.pkg geode-installer-${{ steps.ref.outputs.hash }}-mac.pkg
+          mv geomoded-installer-mac/geode-installer-mac.pkg geode-installer-${{ steps.ref.outputs.hash }}-mac.pkg
           mv geomoded-installer-win/geomoded-installer-win.exe geode-installer-${{ steps.ref.outputs.hash }}-win.exe
 
       - name: Zip MacOS Artifacts
