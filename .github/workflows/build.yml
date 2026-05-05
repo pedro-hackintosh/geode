@@ -400,46 +400,57 @@ jobs:
       - name: Declare Version Variables
         id: ref
         run: |
-          echo "version=$(cat VERSION | xargs)" >> $GITHUB_OUTPUT
-          echo "hash=$(git rev-parse --short "$GITHUB_SHA")" >> $GITHUB_OUTPUT
+          VERSION_FILE="VERSION"
+          VERSION=$(cat "$VERSION_FILE" | xargs)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Bump patch version for next release
+          IFS='.' read -ra VERSION_PARTS <<< "$VERSION"
+          MAJOR=${VERSION_PARTS[0]}
+          MINOR=${VERSION_PARTS[1]}
+          PATCH=${VERSION_PARTS[2]}
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          echo "$NEW_VERSION" > "$VERSION_FILE"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Download Artifacts
         uses: actions/download-artifact@v4
 
       - name: Move Installers
         run: |
-          mv geomoded-installer-mac/geode-installer-mac.pkg geode-installer-${{ steps.ref.outputs.hash }}-mac.pkg
-          mv geomoded-installer-win/geomoded-installer-win.exe geode-installer-${{ steps.ref.outputs.hash }}-win.exe
+          mv geomoded-installer-mac/geode-installer-mac.pkg geode-installer-${{ steps.ref.outputs.version }}-mac.pkg
+          mv geomoded-installer-win/geomoded-installer-win.exe geode-installer-${{ steps.ref.outputs.version }}-win.exe
 
       - name: Zip MacOS Artifacts
         uses: vimtor/action-zip@v1.2
         with:
           files: geode-mac/Geode.dylib geode-mac/GeodeBootstrapper.dylib
-          dest: geomoded-${{ steps.ref.outputs.hash }}-mac.zip
+          dest: geode-${{ steps.ref.outputs.version }}-mac.zip
 
       - name: Zip Windows Artifacts
         uses: vimtor/action-zip@v1.2
         with:
           files: geode-win/XInput1_4.dll geode-win/Geode.dll geode-win/GeodeUpdater.exe geode-win/Geode.lib geode-win/Geode.pdb
-          dest: geomoded-${{ steps.ref.outputs.hash }}-win.zip
+          dest: geode-${{ steps.ref.outputs.version }}-win.zip
 
       - name: Zip Android32 Artifacts
         uses: vimtor/action-zip@v1.2
         with:
           files: geode-android32/Geode.android32.so geode-android32/Geode.android32.so.sym
-          dest: geomoded-${{ steps.ref.outputs.hash }}-android32.zip
+          dest: geode-${{ steps.ref.outputs.version }}-android32.zip
 
       - name: Zip Android64 Artifacts
         uses: vimtor/action-zip@v1.2
         with:
           files: geode-android64/Geode.android64.so geode-android64/Geode.android64.so.sym
-          dest: geomoded-${{ steps.ref.outputs.hash }}-android64.zip
+          dest: geode-${{ steps.ref.outputs.version }}-android64.zip
 
       - name: Zip iOS Artifacts
         uses: vimtor/action-zip@v1.2
         with:
           files: geode-ios/Geode.ios.dylib
-          dest: geomoded-${{ steps.ref.outputs.hash }}-ios.zip
+          dest: geode-${{ steps.ref.outputs.version }}-ios.zip
 
       - name: Zip Resources
         uses: vimtor/action-zip@v1.2
@@ -447,21 +458,30 @@ jobs:
           files: geode-android64/resources
           dest: resources.zip
 
-      - name: Update Development Release
-        uses: andelf/nightly-release@main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: nightly
-          name: 'Development Release'
+          tag_name: v${{ steps.ref.outputs.version }}
+          name: Geode ${{ steps.ref.outputs.version }}
           body: |
-            Geode development release for commit ${{ github.sha }}. Since this is not a regular release, Geode will not install the resources automatically, so you should use the installer if you want them.
+            Geode ${{ steps.ref.outputs.version }} release.
+            Install using the appropriate installer for your platform.
+          draft: false
           files: |
-            ./geomoded-installer-${{ steps.ref.outputs.hash }}-win.exe
-            ./geomoded-installer-${{ steps.ref.outputs.hash }}-mac.pkg
-            ./geomoded-${{ steps.ref.outputs.hash }}-win.zip
-            ./geomoded-${{ steps.ref.outputs.hash }}-mac.zip
-            ./geomoded-${{ steps.ref.outputs.hash }}-android32.zip
-            ./geomoded-${{ steps.ref.outputs.hash }}-android64.zip
-            ./geomoded-${{ steps.ref.outputs.hash }}-ios.zip
+            ./geode-installer-${{ steps.ref.outputs.version }}-win.exe
+            ./geode-installer-${{ steps.ref.outputs.version }}-mac.pkg
+            ./geode-${{ steps.ref.outputs.version }}-win.zip
+            ./geode-${{ steps.ref.outputs.version }}-mac.zip
+            ./geode-${{ steps.ref.outputs.version }}-android32.zip
+            ./geode-${{ steps.ref.outputs.version }}-android64.zip
+            ./geode-${{ steps.ref.outputs.version }}-ios.zip
             ./resources.zip
+
+      - name: Update Version
+        if: success()
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add VERSION
+          git commit -m "Bump version to ${{ steps.ref.outputs.new_version }}"
+          git push
