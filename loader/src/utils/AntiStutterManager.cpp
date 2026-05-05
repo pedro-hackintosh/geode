@@ -115,7 +115,7 @@ bool AntiStutterManager::isFrameSkipCompensationEnabled() const {
     return frameSkipCompensationEnabled;
 }
 
-float AntiStutterManager::getClampedDeltaTime(float dt) const {
+float AntiStutterManager::getClampedDeltaTime(float dt) {
     if (!frameSkipCompensationEnabled) {
         return dt;
     }

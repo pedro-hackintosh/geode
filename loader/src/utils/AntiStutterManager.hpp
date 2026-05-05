@@ -34,7 +34,7 @@ public:
     void setFrameSkipCompensation(bool enabled);
     bool isFrameSkipCompensationEnabled() const;
 
-    float getClampedDeltaTime(float dt) const;
+    float getClampedDeltaTime(float dt);
 
 private:
     AntiStutterManager() = default;
