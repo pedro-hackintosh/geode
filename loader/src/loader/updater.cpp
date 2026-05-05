@@ -19,11 +19,11 @@ bool s_isNewUpdateDownloaded = false;
 
 namespace {
     inline std::string formatDownloadUrl(std::string_view tag) {
-        return fmt::format("https://github.com/geomoded-sdk/geomoded/releases/download/{0}/geomoded-{0}-{1}.zip", tag, GEODE_PLATFORM_SHORT_IDENTIFIER_NOARCH);
+        return fmt::format("https://github.com/pedro-hackintosh/geode/releases/download/{0}/geomoded-{0}-{1}.zip", tag, GEODE_PLATFORM_SHORT_IDENTIFIER_NOARCH);
     }
 
     inline std::string formatResourcesUrl(std::string_view tag) {
-        return fmt::format("https://github.com/geomoded-sdk/geomoded/releases/download/{}/resources.zip", tag);
+        return fmt::format("https://github.com/pedro-hackintosh/geode/releases/download/{}/resources.zip", tag);
     }
 }
 
