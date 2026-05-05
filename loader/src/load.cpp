@@ -12,6 +12,7 @@
 #include <loader/LogImpl.hpp>
 
 #include "internal/about.hpp"
+#include "utils/AntiStutterManager.hpp"
 
 using namespace geode::prelude;
 
@@ -166,6 +167,13 @@ int geodeEntry(void* platformData) {
     // Setup logger here so that internal mod is setup and we can read log level
     // Logging before this point does store the log, and everything gets logged in this setup call
     log::Logger::get()->setup();
+
+    if (Mod::get()->getSettingValue<bool>("anti-stutter-enabled")) {
+        AntiStutterManager::get().setFpsCap(Mod::get()->getSettingValue<int>("anti-stutter-fps-cap"));
+        AntiStutterManager::get().setSpikeMultiplier(Mod::get()->getSettingValue<float>("anti-stutter-spike-multiplier"));
+        AntiStutterManager::get().setSafeWindowDuration(Mod::get()->getSettingValue<float>("anti-stutter-safe-window"));
+        log::info("Anti-Stutter system initialized");
+    }
 
     // download bindings
 #ifndef GEODE_IS_ANDROID

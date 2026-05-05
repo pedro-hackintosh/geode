@@ -200,6 +200,40 @@
             "max": 100,
             "name": "Server Cache Size Limit",
             "description": "Limits the size of the cache used for loading mods. Higher values result in higher memory usage."
+        },
+        "anti-stutter-title": {
+            "type": "title",
+            "name": "Anti-Stutter Settings"
+        },
+        "anti-stutter-enabled": {
+            "type": "bool",
+            "default": true,
+            "name": "Enable Anti-Stutter",
+            "description": "Enable the anti-stutter system to reduce lag spikes and prevent unfair deaths"
+        },
+        "anti-stutter-fps-cap": {
+            "type": "int",
+            "default": 60,
+            "min": 30,
+            "max": 240,
+            "name": "FPS Cap",
+            "description": "Target FPS cap for the game (0 to disable)"
+        },
+        "anti-stutter-spike-multiplier": {
+            "type": "float",
+            "default": 2.5,
+            "min": 1.5,
+            "max": 5.0,
+            "name": "Spike Sensitivity",
+            "description": "Multiplier for detecting lag spikes (higher = more sensitive)"
+        },
+        "anti-stutter-safe-window": {
+            "type": "float",
+            "default": 0.075,
+            "min": 0.03,
+            "max": 0.2,
+            "name": "Safe Window (seconds)",
+            "description": "Duration of protection after detecting a lag spike"
         }
     },
     "issues": {
