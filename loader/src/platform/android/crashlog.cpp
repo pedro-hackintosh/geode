@@ -301,7 +301,7 @@ std::vector<Register> CrashContext::getRegisters() {
 }
 
 std::string_view CrashContext::getGeodeBinaryName() {
-    return "Geode.so";
+    return "Geomoded.so";
 }
 
 /// Source: https://cs.android.com/android/platform/superproject/main/+/main:bionic/libc/bionic/android_set_abort_message.cpp

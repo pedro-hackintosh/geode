@@ -13,7 +13,7 @@ using namespace crashlog;
 static int s_pipe[2];
 
 std::string_view CrashContext::getGeodeBinaryName() {
-    return "Geode.ios.dylib";
+    return "Geomoded.ios.dylib";
 }
 
 void CrashContext::writeInfo(Buffer& stream) {

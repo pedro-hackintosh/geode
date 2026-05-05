@@ -1,28 +1,28 @@
 cmake_minimum_required(VERSION 3.21)
 
 
-add_library(GeodeBootstrapper SHARED Bootstrapper.cpp)
-target_compile_features(GeodeBootstrapper PUBLIC cxx_std_23)
-set_target_properties(GeodeBootstrapper PROPERTIES
+add_library(GeomodedBootstrapper SHARED Bootstrapper.cpp)
+target_compile_features(GeomodedBootstrapper PUBLIC cxx_std_23)
+set_target_properties(GeomodedBootstrapper PROPERTIES
 	PREFIX "" 
-	OUTPUT_NAME "GeodeBootstrapper"
+	OUTPUT_NAME "GeomodedBootstrapper"
 	LIBRARY_OUTPUT_DIRECTORY "${GEODE_BIN_PATH}/nightly"
 	RUNTIME_OUTPUT_DIRECTORY "${GEODE_BIN_PATH}/nightly"
 )
 
-target_link_libraries(GeodeBootstrapper PRIVATE)
+target_link_libraries(GeomodedBootstrapper PRIVATE)
 
-add_library(FakeGeode SHARED FakeGeode.cpp)
-target_compile_features(FakeGeode PUBLIC cxx_std_23)
-set_target_properties(FakeGeode PROPERTIES
+add_library(FakeGeomoded SHARED FakeGeode.cpp)
+target_compile_features(FakeGeomoded PUBLIC cxx_std_23)
+set_target_properties(FakeGeomoded PROPERTIES
 	PREFIX "" 
-	OUTPUT_NAME "Geode"
+	OUTPUT_NAME "Geomoded"
 )
 
-set_target_properties(GeodeBootstrapper PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE)
-set_target_properties(GeodeBootstrapper PROPERTIES INSTALL_RPATH "./")
+set_target_properties(GeomodedBootstrapper PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE)
+set_target_properties(GeomodedBootstrapper PROPERTIES INSTALL_RPATH "./")
 
-set_target_properties(FakeGeode PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE)
-set_target_properties(FakeGeode PROPERTIES INSTALL_RPATH "./")
+set_target_properties(FakeGeomoded PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE)
+set_target_properties(FakeGeomoded PROPERTIES INSTALL_RPATH "./")
 
-target_link_libraries(GeodeBootstrapper PRIVATE FakeGeode)
+target_link_libraries(GeomodedBootstrapper PRIVATE FakeGeomoded)
