@@ -413,7 +413,7 @@ Function .onVerifyInstDir
     IfFileExists $INSTDIR\libcrypto-3-x64.dll 0 versionIssueImo
 
     ; check if geode is already installed
-    IfFileExists $INSTDIR\Geode.dll valid
+    IfFileExists $INSTDIR\Geomoded.dll valid
 
     ; check mod loaders/mod menus
     IfFileExists $INSTDIR\hackpro.dll other_hackpro
@@ -464,10 +464,10 @@ SectionGroup "Geode"
         continue_install:
 
         SetOutPath $INSTDIR
+File ${BINDIR}\Geomoded.dll
 
-        File ${BINDIR}\Geode.dll
-        File ${BINDIR}\Geode.pdb
-        File ${BINDIR}\GeodeUpdater.exe
+        File ${BINDIR}\Geomoded.pdb
+        File ${BINDIR}\GeomodedUpdater.exe
         File ${BINDIR}\XInput1_4.dll
 
         RMdir /r $INSTDIR\geode\update
@@ -541,7 +541,7 @@ Function un.onInit
 
     ; check if xinput and geode exist
     IfFileExists $INSTDIR\XInput1_4.dll 0 invalid
-    IfFileExists $INSTDIR\Geode.dll 0 invalid
+    IfFileExists $INSTDIR\Geomoded.dll 0 invalid
         Return
 
     invalid:
@@ -551,10 +551,12 @@ FunctionEnd
 Section "Uninstall"
     DeleteRegKey /ifempty HKCU "Software\Geode"
     Delete $INSTDIR\GeodeUninstaller.exe
-    Delete $INSTDIR\Geode.dll
-    Delete $INSTDIR\Geode.pdb
-    Delete $INSTDIR\Geode.lib
-    Delete $INSTDIR\GeodeUpdater.exe
+Delete $INSTDIR\Geomoded.dll
+
+    Delete $INSTDIR\Geomoded.pdb
+
+    Delete $INSTDIR\Geomoded.lib
+    Delete $INSTDIR\GeomodedUpdater.exe
     Delete $INSTDIR\XInput1_4.dll
 
     # default value of DATA is an empty string

@@ -26,7 +26,7 @@ add_executable(Updater Updater.cpp)
 target_compile_features(Updater PUBLIC cxx_std_23)
 set_target_properties(Updater PROPERTIES
 	PREFIX ""
-	OUTPUT_NAME "GeodeUpdater"
+	OUTPUT_NAME "GeomodedUpdater"
 	RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${GEODE_BIN_PATH}/nightly"
 	ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO "${GEODE_BIN_PATH}/nightly"
 	LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO "${GEODE_BIN_PATH}/nightly"

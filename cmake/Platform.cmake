@@ -48,8 +48,8 @@ if (GEODE_TARGET_PLATFORM STREQUAL "iOS")
 		-DGLES_SILENCE_DEPRECATION
 	)
 
-	set(GEODE_OUTPUT_NAME "Geode.ios")
-	set(GEODE_PLATFORM_BINARY "Geode.ios.dylib")
+	set(GEODE_OUTPUT_NAME "Geomoded.ios")
+	set(GEODE_PLATFORM_BINARY "Geomoded.ios.dylib")
 	set(GEODE_MOD_BINARY_SUFFIX ".ios.dylib" CACHE STRING "" FORCE)
 
 	if (NOT ${PROJECT_NAME} STREQUAL ${CMAKE_PROJECT_NAME})
@@ -86,8 +86,8 @@ elseif (GEODE_TARGET_PLATFORM STREQUAL "MacOS")
 		-DGL_SILENCE_DEPRECATION
 	)
 
-	set(GEODE_OUTPUT_NAME "Geode")
-	set(GEODE_PLATFORM_BINARY "Geode.dylib")
+	set(GEODE_OUTPUT_NAME "Geomoded")
+	set(GEODE_PLATFORM_BINARY "Geomoded.dylib")
 	set(GEODE_MOD_BINARY_SUFFIX ".dylib" CACHE STRING "" FORCE)
 
 	if (NOT ${PROJECT_NAME} STREQUAL ${CMAKE_PROJECT_NAME})
@@ -120,8 +120,8 @@ elseif (GEODE_TARGET_PLATFORM STREQUAL "Win64")
 	endif()
 
 	# Windows links against .lib and not .dll
-	set(GEODE_OUTPUT_NAME "Geode")
-	set(GEODE_PLATFORM_BINARY "Geode.lib")
+	set(GEODE_OUTPUT_NAME "Geomoded")
+	set(GEODE_PLATFORM_BINARY "Geomoded.lib")
 	set(GEODE_MOD_BINARY_SUFFIX ".dll" CACHE STRING "" FORCE)
 
 	if (NOT ${PROJECT_NAME} STREQUAL ${CMAKE_PROJECT_NAME})
@@ -145,8 +145,8 @@ elseif (GEODE_TARGET_PLATFORM STREQUAL "Android32")
 		log
 	)
 
-	set(GEODE_OUTPUT_NAME "Geode.android32")
-	set(GEODE_PLATFORM_BINARY "Geode.android32.so")
+	set(GEODE_OUTPUT_NAME "Geomoded.android32")
+	set(GEODE_PLATFORM_BINARY "Geomoded.android32.so")
 	set(GEODE_MOD_BINARY_SUFFIX ".android32.so" CACHE STRING "" FORCE)
 
 	if (NOT ${PROJECT_NAME} STREQUAL ${CMAKE_PROJECT_NAME})
@@ -175,8 +175,8 @@ elseif (GEODE_TARGET_PLATFORM STREQUAL "Android64")
 	# a little desperate
 	add_definitions(-DANDROID_STL=c++_shared)
 
-	set(GEODE_OUTPUT_NAME "Geode.android64")
-	set(GEODE_PLATFORM_BINARY "Geode.android64.so")
+	set(GEODE_OUTPUT_NAME "Geomoded.android64")
+	set(GEODE_PLATFORM_BINARY "Geomoded.android64.so")
 	set(GEODE_MOD_BINARY_SUFFIX ".android64.so" CACHE STRING "" FORCE)
 
 	if (NOT ${PROJECT_NAME} STREQUAL ${CMAKE_PROJECT_NAME})
