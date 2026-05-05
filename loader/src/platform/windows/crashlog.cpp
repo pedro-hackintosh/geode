@@ -355,7 +355,7 @@ std::vector<Register> CrashContext::getRegisters() {
 }
 
 std::string_view CrashContext::getGeodeBinaryName() {
-    return "Geode.dll";
+    return "Geomoded.dll";
 }
 
 static HMODULE handleFromAddress(void const* addr) {

@@ -14,7 +14,7 @@ static int s_crashIter = 0;
 
 
 std::string_view CrashContext::getGeodeBinaryName() {
-    return "Geode.dylib";
+    return "Geomoded.dylib";
 }
 
 void CrashContext::writeInfo(Buffer& stream) {
