@@ -465,9 +465,7 @@ SectionGroup "Geode"
 
 SetOutPath $INSTDIR
 File ${BINDIR}\Geomoded.dll
-
-; Create Geode.dll alias for mod compatibility
-CopyFiles /SILENT $INSTDIR\Geomoded.dll $INSTDIR\Geode.dll
+File ${BINDIR}\Geode.dll
 
 File ${BINDIR}\Geomoded.pdb
         File ${BINDIR}\GeomodedUpdater.exe
