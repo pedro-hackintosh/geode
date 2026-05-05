@@ -25,6 +25,17 @@ public:
 
     bool shouldAllowDeath() const;
 
+    void pushJumpInput();
+    bool consumeJumpInput();
+
+    void setInputBufferDuration(float duration);
+    float getInputBufferDuration() const;
+
+    void setFrameSkipCompensation(bool enabled);
+    bool isFrameSkipCompensationEnabled() const;
+
+    float getClampedDeltaTime(float dt) const;
+
 private:
     AntiStutterManager() = default;
 
@@ -41,4 +52,10 @@ private:
     float safeWindowDuration = 0.075f;
 
     cocos2d::CCArray* preloadedAssets = nullptr;
+
+    float jumpInputBufferTimer = 0.0f;
+    float inputBufferDuration = 0.05f;
+
+    bool frameSkipCompensationEnabled = true;
+    float previousDeltaTime = 0.016f;
 };

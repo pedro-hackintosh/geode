@@ -234,6 +234,36 @@
             "max": 0.2,
             "name": "Safe Window (seconds)",
             "description": "Duration of protection after detecting a lag spike"
+        },
+        "gameplay-fix-title": {
+            "type": "title",
+            "name": "Gameplay Fix Settings"
+        },
+        "gameplay-input-buffer": {
+            "type": "bool",
+            "default": true,
+            "name": "Input Buffer",
+            "description": "Store jump inputs for ~50ms to prevent missed clicks during lag"
+        },
+        "gameplay-input-buffer-duration": {
+            "type": "float",
+            "default": 0.05,
+            "min": 0.02,
+            "max": 0.1,
+            "name": "Input Buffer Duration",
+            "description": "How long to store jump inputs (seconds)"
+        },
+        "gameplay-hitbox-tolerance": {
+            "type": "bool",
+            "default": true,
+            "name": "Hitbox Tolerance",
+            "description": "Ignore very close edge collisions during lag spikes"
+        },
+        "gameplay-frame-skip-compensation": {
+            "type": "bool",
+            "default": true,
+            "name": "Frame Skip Compensation",
+            "description": "Smooth movement when frames are skipped"
         }
     },
     "issues": {

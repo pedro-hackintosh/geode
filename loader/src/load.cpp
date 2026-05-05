@@ -172,6 +172,8 @@ int geodeEntry(void* platformData) {
         AntiStutterManager::get().setFpsCap(Mod::get()->getSettingValue<int>("anti-stutter-fps-cap"));
         AntiStutterManager::get().setSpikeMultiplier(Mod::get()->getSettingValue<float>("anti-stutter-spike-multiplier"));
         AntiStutterManager::get().setSafeWindowDuration(Mod::get()->getSettingValue<float>("anti-stutter-safe-window"));
+        AntiStutterManager::get().setInputBufferDuration(Mod::get()->getSettingValue<float>("gameplay-input-buffer-duration"));
+        AntiStutterManager::get().setFrameSkipCompensation(Mod::get()->getSettingValue<bool>("gameplay-frame-skip-compensation"));
         log::info("Anti-Stutter system initialized");
     }
 

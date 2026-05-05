@@ -84,3 +84,49 @@ void AntiStutterManager::preloadCommonAssets() {
 bool AntiStutterManager::shouldAllowDeath() const {
     return !isInSafeWindow();
 }
+
+void AntiStutterManager::pushJumpInput() {
+    if (isLagSpike() || isInSafeWindow()) {
+        jumpInputBufferTimer = inputBufferDuration;
+    }
+}
+
+bool AntiStutterManager::consumeJumpInput() {
+    if (jumpInputBufferTimer > 0.0f) {
+        jumpInputBufferTimer = 0.0f;
+        return true;
+    }
+    return false;
+}
+
+void AntiStutterManager::setInputBufferDuration(float duration) {
+    inputBufferDuration = (duration > 0.0f && duration < 0.2f) ? duration : 0.05f;
+}
+
+float AntiStutterManager::getInputBufferDuration() const {
+    return inputBufferDuration;
+}
+
+void AntiStutterManager::setFrameSkipCompensation(bool enabled) {
+    frameSkipCompensationEnabled = enabled;
+}
+
+bool AntiStutterManager::isFrameSkipCompensationEnabled() const {
+    return frameSkipCompensationEnabled;
+}
+
+float AntiStutterManager::getClampedDeltaTime(float dt) const {
+    if (!frameSkipCompensationEnabled) {
+        return dt;
+    }
+
+    float maxDt = 1.0f / 30.0f;
+    if (dt > maxDt) {
+        float smoothedDt = (previousDeltaTime + dt) * 0.5f;
+        previousDeltaTime = smoothedDt;
+        return smoothedDt;
+    }
+
+    previousDeltaTime = dt;
+    return dt;
+}
