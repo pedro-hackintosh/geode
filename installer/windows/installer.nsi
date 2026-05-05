@@ -4,7 +4,7 @@
     !include WinMessages.nsh
 
 ; settings
-    Name "Geomoded"
+    Name "Geode"
     OutFile "geomoded-installer-win.exe"
     Unicode true
     InstallDir "$PROGRAMFILES32\Steam\steamapps\common\Geometry Dash\" ; set default path to the most common one
@@ -452,7 +452,7 @@ Function .onVerifyInstDir
         Return
 FunctionEnd
 
-SectionGroup "Geomoded"
+SectionGroup "Geode"
     Section "Loader" LOADER_SECTION
         check_gd_open:
             nsExec::ExecToStack 'cmd /c tasklist /FI "IMAGENAME eq GeometryDash.exe" | find /I "GeometryDash.exe"'
@@ -483,7 +483,7 @@ File ${BINDIR}\Geomoded.dll
         Delete "$INSTDIR\vcruntime140.dll"
         Delete "$INSTDIR\vcruntime140d.dll"
 
-        WriteUninstaller "GeomodedUninstaller.exe"
+        WriteUninstaller "GeodeUninstaller.exe"
     SectionEnd
 
     Section "Resources"

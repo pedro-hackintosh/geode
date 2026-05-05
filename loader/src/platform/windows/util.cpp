@@ -299,7 +299,7 @@ void geode::utils::game::restart(bool saveData, bool safeMode) {
     }
 
     // launch updater
-    auto const updaterPath = workingDir / "GeodeUpdater.exe";
+    auto const updaterPath = workingDir / "GeomodedUpdater.exe";
     ShellExecuteW(nullptr, L"open", updaterPath.c_str(), gdName.c_str(), workingDir.c_str(), false);
 
     exit(saveData);

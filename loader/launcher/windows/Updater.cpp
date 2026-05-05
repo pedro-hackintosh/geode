@@ -12,7 +12,7 @@ constexpr static auto MAX_PATH_CHARS = 32768u;
 constexpr wchar_t VCREDIST_LINK[] = L"https://aka.ms/vc14/vc_redist.x64.exe";
 
 void showError(std::wstring const& error) {
-    MessageBoxW(nullptr, error.c_str(), L"Error Loading Geode", MB_ICONERROR);
+    MessageBoxW(nullptr, error.c_str(), L"Error Loading Geomoded", MB_ICONERROR);
 }
 
 std::wstring utf8ToWide(std::string const& str) {
@@ -24,7 +24,7 @@ std::wstring utf8ToWide(std::string const& str) {
 
 void showError(std::wstring error, std::error_code ec) {
     error += L" - " + utf8ToWide(ec.message());
-    MessageBoxW(nullptr, error.c_str(), L"Error Loading Geode", MB_ICONERROR);
+    MessageBoxW(nullptr, error.c_str(), L"Error Loading Geomoded", MB_ICONERROR);
 }
 
 bool waitForFile(std::filesystem::path const& path) {
@@ -56,7 +56,7 @@ bool waitForFile(std::filesystem::path const& path) {
         CloseHandle(hFile);
     } else {
         auto filename = path.filename();
-        showError(L"Unable to update Geode: " + filename.native() + L" is open by another process.\n\nTry opening Geometry Dash once again or restart your PC if this issue persists.");
+        showError(L"Unable to update Geomoded: " + filename.native() + L" is open by another process.\n\nTry opening Geometry Dash once again or restart your PC if this issue persists.");
         return false;
     }
     return true;
@@ -71,7 +71,7 @@ bool updateFile(std::string const& name) {
 
     std::filesystem::rename(updatesDir / name, workingDir / name, error);
     if (error) {
-        showError(L"Unable to update Geode: Unable to move " + utf8ToWide(name), error);
+        showError(L"Unable to update Geomoded: Unable to move " + utf8ToWide(name), error);
         return false;
     }
     return true;
@@ -89,9 +89,9 @@ void removePath(std::filesystem::path const& path) {
     std::filesystem::remove(path, error);
     if (error) {
         if (path.has_filename())
-            showError(L"Unable to update Geode: Unable to remove " + path.filename().native(), error);
+            showError(L"Unable to update Geomoded: Unable to remove " + path.filename().native(), error);
         else
-            showError(L"Unable to update Geode: Unable to remove " + path.native(), error);
+            showError(L"Unable to update Geomoded: Unable to remove " + path.native(), error);
         return;
     }
 }
@@ -103,13 +103,13 @@ void updateResources() {
 
     std::filesystem::remove_all(resourcesDir / "geode.loader", error);
     if (error) {
-        showError(L"Unable to update Geode resources", error);
+        showError(L"Unable to update Geomoded resources", error);
         return;
     }
 
     std::filesystem::rename(updatesDir / "resources", resourcesDir / "geode.loader", error);
     if (error) {
-        showError(L"Unable to update Geode resources", error);
+        showError(L"Unable to update Geomoded resources", error);
         return;
     }
 }
@@ -151,14 +151,14 @@ int main(int argc, char* argv[]) {
     updatesDir = geodeDir / "update";
     resourcesDir = geodeDir / "resources";
 
-    if (std::filesystem::exists(workingDir / "GeodeBootstrapper.dll"))
-        removePath(workingDir / "GeodeBootstrapper.dll");
+    if (std::filesystem::exists(workingDir / "GeomodedBootstrapper.dll"))
+        removePath(workingDir / "GeomodedBootstrapper.dll");
 
     if (std::filesystem::exists(geodeDir) && std::filesystem::exists(updatesDir)) {
         bool updateSuccess = true;
         updateSuccess &= updateFile("XInput1_4.dll");
-        updateSuccess &= updateFile("Geode.dll");
-        updateSuccess &= updateFile("Geode.pdb");
+        updateSuccess &= updateFile("Geomoded.dll");
+        updateSuccess &= updateFile("Geomoded.pdb");
         updateResources();
         // if couldnt update the files, dont delete the updates folder
         if (updateSuccess)
@@ -168,10 +168,10 @@ int main(int argc, char* argv[]) {
     // gd always restarts with its executable as the 1st arg
     if (argc < 2){
         if(MessageBoxW(
-            NULL, L"GeodeUpdater is an internal utility. If you want to update "
-            L"Geode manually, please download the installer from https://geode-sdk.org/install "
+            NULL, L"GeomodedUpdater is an internal utility. If you want to update "
+            L"Geomoded manually, please download the installer from https://geode-sdk.org/install "
             L"and follow the instructions.\n\nOpen the download page?", 
-            L"Geode Updater", MB_ICONINFORMATION | MB_YESNO
+            L"Geomoded Updater", MB_ICONINFORMATION | MB_YESNO
         ) == IDYES) {
             ShellExecuteW(NULL, L"open", L"https://geode-sdk.org/install", NULL, NULL, TRUE);
         }

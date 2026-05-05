@@ -18,8 +18,8 @@ constexpr wchar_t ALT_REDIST_ERROR[] = L"Could not load Geode!\n\n"
 constexpr wchar_t OUTDATED_REDIST[] = L"Your installed Microsoft Visual C++ Redistributable is outdated.\n"
     "This can cause random crashes and Geode might not work at all.\n\n"
     "Do you want to update it to fix this issue?";
-constexpr wchar_t GEODE_NOT_FOUND_ERROR[] = L"Could not find Geode.dll!\n"
-    "To fix this issue, please download the installer again and re-install Geode.\n"
+constexpr wchar_t GEODE_NOT_FOUND_ERROR[] = L"Could not find Geomoded.dll!\n"
+    "To fix this issue, please download the installer again and re-install Geomoded.\n"
     "Also make sure your antivirus is not blocking the file.\n\n"
     "Open the download page?";
 constexpr wchar_t BAD_EXE_FORMAT_ERROR[] = L"Your installation of Geode is corrupted.\n"
@@ -91,7 +91,7 @@ static std::wstring getErrorString(DWORD error) {
 }
 
 void downloadRedist() {
-    std::wstring cmdLine = L"GeodeUpdater.exe /redist";
+    std::wstring cmdLine = L"GeomodedUpdater.exe /redist";
     std::vector<wchar_t> cmdBuffer(cmdLine.begin(), cmdLine.end());
     cmdBuffer.push_back(L'\0');
 
@@ -153,7 +153,7 @@ static DWORD errorThread(LPVOID param) {
         }
 
     } else if (error == ERROR_MOD_NOT_FOUND) {
-        if(!std::filesystem::exists(L"Geode.dll")) {
+        if(!std::filesystem::exists(L"Geomoded.dll")) {
             if(MessageBoxW(NULL, GEODE_NOT_FOUND_ERROR, L"Load failed (error code: 126)", MB_YESNO | MB_ICONWARNING) == IDYES) {
                 openDownloadPage();
             }
@@ -207,7 +207,7 @@ BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID _) {
         }
 
         // This is UB.
-        if (LoadLibraryW(L"Geode.dll") == NULL) {
+        if (LoadLibraryW(L"Geomoded.dll") == NULL) {
             const auto param = reinterpret_cast<LPVOID>(static_cast<DWORD64>(GetLastError()));
             CreateThread(NULL, 0, &errorThread, param, 0, NULL);
         }

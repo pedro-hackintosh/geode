@@ -22,9 +22,9 @@ void updateGeode() {
 
     // update updater
     if (std::filesystem::exists(updatesDir) &&
-        std::filesystem::exists(updatesDir / "GeodeUpdater.exe"))
-        std::filesystem::rename(updatesDir / "GeodeUpdater.exe", workingDir / "GeodeUpdater.exe");
+std::filesystem::exists(updatesDir / "GeomodedUpdater.exe"))
 
+        std::filesystem::rename(updatesDir / "GeomodedUpdater.exe", workingDir / "GeomodedUpdater.exe");
     utils::game::restart(true);
 }
 
