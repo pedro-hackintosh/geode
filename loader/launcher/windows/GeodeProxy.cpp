@@ -5,7 +5,6 @@ static HMODULE g_hGeomoded = nullptr;
 
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
-        // Try multiple paths
         g_hGeomoded = LoadLibraryW(L"Geomoded.dll");
         if (!g_hGeomoded) g_hGeomoded = LoadLibraryW(L"./Geomoded.dll");
         if (!g_hGeomoded) g_hGeomoded = LoadLibraryW(L"bin/Geomoded.dll");
@@ -17,24 +16,67 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID) {
     return TRUE;
 }
 
-// Helper macro for safe function forwarding
-#define FORWARD_FUNC(retType, name, ...) \
-    extern "C" __declspec(dllexport) retType name(__VA_ARGS__) { \
-        if (!g_hGeomoded) return retType(); \
-        auto fn = (retType(*)(__VA_ARGS__))GetProcAddress(g_hGeomoded, #name); \
-        return fn ? fn(__VA_ARGS__) : retType(); \
-    }
+// Forward functions manually
+extern "C" __declspec(dllexport) int geode_loader_main() {
+    if (!g_hGeomoded) return 0;
+    auto fn = (int(*)())GetProcAddress(g_hGeomoded, "geode_loader_main");
+    return fn ? fn() : 0;
+}
 
-// Common loader functions
-FORWARD_FUNC(int, geode_loader_main)
-FORWARD_FUNC(const char*, getGeodeVersion)
-FORWARD_FUNC(const char*, getGeodeBinaryName)
-FORWARD_FUNC(void*, getModList)
-FORWARD_FUNC(void*, loadMod, const char*)
-FORWARD_FUNC(bool, unloadMod, const char*)
+extern "C" __declspec(dllexport) const char* getGeodeVersion() {
+    if (!g_hGeomoded) return "0.0";
+    auto fn = (const char*(*)())GetProcAddress(g_hGeomoded, "getGeodeVersion");
+    return fn ? fn() : "0.0";
+}
 
-FORWARD_FUNC(void*, getLoadedMods)
-FORWARD_FUNC(void*, getAllMods)
-FORWARD_FUNC(bool, isModLoaded, const char*)
-FORWARD_FUNC(void*, getMod, const char*)
-FORWARD_FUNC(int, getModCount)
+extern "C" __declspec(dllexport) const char* getGeodeBinaryName() {
+    return "Geode.dll";
+}
+
+extern "C" __declspec(dllexport) void* getModList() {
+    if (!g_hGeomoded) return nullptr;
+    auto fn = (void*(*)())GetProcAddress(g_hGeomoded, "getModList");
+    return fn ? fn() : nullptr;
+}
+
+extern "C" __declspec(dllexport) void* loadMod(const char* id) {
+    if (!g_hGeomoded) return nullptr;
+    auto fn = (void*(*)(const char*))GetProcAddress(g_hGeomoded, "loadMod");
+    return fn ? fn(id) : nullptr;
+}
+
+extern "C" __declspec(dllexport) bool unloadMod(const char* id) {
+    if (!g_hGeomoded) return false;
+    auto fn = (bool(*)(const char*))GetProcAddress(g_hGeomoded, "unloadMod");
+    return fn ? fn(id) : false;
+}
+
+extern "C" __declspec(dllexport) void* getLoadedMods() {
+    if (!g_hGeomoded) return nullptr;
+    auto fn = (void*(*)())GetProcAddress(g_hGeomoded, "getLoadedMods");
+    return fn ? fn() : nullptr;
+}
+
+extern "C" __declspec(dllexport) void* getAllMods() {
+    if (!g_hGeomoded) return nullptr;
+    auto fn = (void*(*)())GetProcAddress(g_hGeomoded, "getAllMods");
+    return fn ? fn() : nullptr;
+}
+
+extern "C" __declspec(dllexport) bool isModLoaded(const char* id) {
+    if (!g_hGeomoded) return false;
+    auto fn = (bool(*)(const char*))GetProcAddress(g_hGeomoded, "isModLoaded");
+    return fn ? fn(id) : false;
+}
+
+extern "C" __declspec(dllexport) void* getMod(const char* id) {
+    if (!g_hGeomoded) return nullptr;
+    auto fn = (void*(*)(const char*))GetProcAddress(g_hGeomoded, "getMod");
+    return fn ? fn(id) : nullptr;
+}
+
+extern "C" __declspec(dllexport) int getModCount() {
+    if (!g_hGeomoded) return 0;
+    auto fn = (int(*)())GetProcAddress(g_hGeomoded, "getModCount");
+    return fn ? fn() : 0;
+}
