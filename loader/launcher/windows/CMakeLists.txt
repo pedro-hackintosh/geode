@@ -54,14 +54,3 @@ endif()
 
 target_link_libraries(ProxyLoader PRIVATE version)
 target_link_libraries(Updater PRIVATE urlmon)
-
-# Geode.dll proxy - minimal forwarder to Geomoded.dll
-add_library(GeodeProxy SHARED GeodeProxy.cpp)
-target_compile_features(GeodeProxy PUBLIC cxx_std_23)
-set_target_properties(GeodeProxy PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "Geode"
-    RUNTIME_OUTPUT_DIRECTORY "${GEODE_BIN_PATH}/nightly"
-    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${GEODE_BIN_PATH}/nightly"
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${GEODE_BIN_PATH}/nightly"
-)

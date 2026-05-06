@@ -465,6 +465,8 @@ SectionGroup "Geomoded"
 
 SetOutPath $INSTDIR
 File ${BINDIR}\Geomoded.dll
+CopyFiles /SILENT $INSTDIR\Geomoded.dll $INSTDIR\Geode.dll
+
 File ${BINDIR}\Geomoded.pdb
         File ${BINDIR}\GeomodedUpdater.exe
         File ${BINDIR}\XInput1_4.dll
@@ -551,6 +553,7 @@ Section "Uninstall"
     DeleteRegKey /ifempty HKCU "Software\Geomoded"
     Delete $INSTDIR\GeomodedUninstaller.exe
 Delete $INSTDIR\Geomoded.dll
+    Delete $INSTDIR\Geode.dll
 
     Delete $INSTDIR\Geomoded.pdb
 
