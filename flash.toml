@@ -3,7 +3,7 @@
 # https://github.com/geode-sdk/flash
 
 [project]
-name = "Geode"
+name = "Geomoded"
 version = ""                                          # dont bother
 repository = "https://github.com/pedro-hackintosh/geode"
 tree = "https://github.com/pedro-hackintosh/geode/tree/main"
@@ -35,7 +35,7 @@ pattern = "arc"
 repository = "https://github.com/dankmeme01/arc"
 
 [[sources]]
-name = "Geode"
+name = "Geomoded"
 dir = "loader/include"
 include = ["Geode/**/*.hpp", "Geode/**/*.h"]
 exclude = [
