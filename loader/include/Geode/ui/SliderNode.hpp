@@ -1,14 +1,27 @@
 #pragma once
 
+#include <Geode/cocos/base_nodes/CCNode.h>
+#include <Geode/cocos/touch_dispatcher/CCTouchDelegateProtocol.h>
+#include <Geode/loader/Event.hpp>
 #include <Geode/ui/NineSlice.hpp>
+#include <Geode/ui/Label.hpp>
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/utils/function.hpp>
 #include <Geode/utils/ZStringView.hpp>
-#include <cocos2d.h>
 
 namespace geode {
     class GEODE_DLL SliderNode : public cocos2d::CCNodeRGBA, public cocos2d::CCTouchDelegate {
     public:
+        enum class SlideType {
+            Slide,
+            Click,
+            Release
+        };
+
+        class SliderEvent : public geode::GlobalEvent<SliderEvent, bool(SliderNode*, SlideType, float), bool(float value), SliderNode*, SlideType> {
+            using GlobalEvent::GlobalEvent;
+        };
+
         using SliderCallback = geode::Function<void(SliderNode* sender, float value)>;
 
         /**
@@ -45,6 +58,30 @@ namespace geode {
          * Set a callback for when the slider thumb is released
          */
         void setReleaseCallback(SliderCallback callback);
+
+        /**
+         * Add a callback for when the slider thumb is dragged
+         */
+        template <class Callback>
+        void addSlideCallback(ZStringView id, Callback&& callback, int priority = 0) {
+            addEventListener(id, SliderNode::SliderEvent(this, SliderNode::SlideType::Slide), std::forward<Callback>(callback), priority);
+        }
+
+        /**
+         * Add a callback for when the slider thumb is clicked
+         */
+        template <class Callback>
+        void addClickCallback(ZStringView id, Callback&& callback, int priority = 0) {
+            addEventListener(id, SliderNode::SliderEvent(this, SliderNode::SlideType::Click), std::forward<Callback>(callback), priority);
+        }
+
+        /**
+         * Add a callback for when the slider thumb is released
+         */
+        template <class Callback>
+        void addReleaseCallback(ZStringView id, Callback&& callback, int priority = 0) {
+            addEventListener(id, SliderNode::SliderEvent(this, SliderNode::SlideType::Release), std::forward<Callback>(callback), priority);
+        }
 
         /**
          * Set the minimum value the slider can go to
@@ -106,7 +143,7 @@ namespace geode {
          * Link a label. This will make the label automatically update whenever
          * the slider is dragged.
          */
-        void linkLabel(cocos2d::CCLabelBMFont* label, unsigned int precision);
+        void linkLabel(geode::Label* label, unsigned int precision);
 
         /**
          * Unlink a linked label
@@ -119,7 +156,7 @@ namespace geode {
         void setLabelPrecision(unsigned int precision);
 
         unsigned int getLabelPrecision();
-        cocos2d::CCLabelBMFont* getLinkedLabel();
+        geode::Label* getLinkedLabel();
 
         /**
          * Set the slider as read only. This will hide the thumb and will disallow edits made
@@ -159,7 +196,7 @@ namespace geode {
 
         bool initCustom(cocos2d::CCSprite* thumb, cocos2d::CCSprite* thumbSelected, NineSlice* groove, ZStringView bar, SliderCallback callback, cocos2d::CCSize const& barOffset);
         bool initStandard(SliderCallback callback, bool alt);
-        
+
         void updateSize();
         void updateFromTouch(cocos2d::CCTouch* touch);
 

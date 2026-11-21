@@ -1,19 +1,43 @@
 #pragma once
 
-#include <matjson.hpp>
+#include "../DefaultInclude.hpp"
 #include "casts.hpp"
 #include "general.hpp"
-#include "../DefaultInclude.hpp"
-#include <Geode/utils/ZStringView.hpp>
-#include <cocos2d.h>
-#include <functional>
-#include <type_traits>
-#include "../loader/Event.hpp"
+
 #include <Geode/binding/CCMenuItemSpriteExtra.hpp>
 #include <Geode/binding/CCMenuItemToggler.hpp>
+#include <Geode/cocos/CCConfiguration.h>
+#include <Geode/cocos/CCDirector.h>
+#include <Geode/cocos/actions/CCActionInstant.h>
+#include <Geode/cocos/actions/CCActionInterval.h>
+#include <Geode/cocos/base_nodes/CCNode.h>
+#include <Geode/cocos/cocoa/CCArray.h>
+#include <Geode/cocos/cocoa/CCDictionary.h>
+#include <Geode/cocos/cocoa/CCDouble.h>
+#include <Geode/cocos/cocoa/CCFloat.h>
+#include <Geode/cocos/draw_nodes/CCDrawingPrimitives.h>
+#include <Geode/cocos/include/ccTypes.h>
+#include <Geode/cocos/label_nodes/CCLabelBMFont.h>
+#include <Geode/cocos/layers_scenes_transitions_nodes/CCLayer.h>
+#include <Geode/cocos/layers_scenes_transitions_nodes/CCScene.h>
+#include <Geode/cocos/menu_nodes/CCMenu.h>
+#include <Geode/cocos/platform/CCImage.h>
+#include <Geode/cocos/robtop/keyboard_dispatcher/CCKeyboardDispatcher.h>
+#include <Geode/cocos/sprite_nodes/CCSprite.h>
+#include <Geode/cocos/sprite_nodes/CCSpriteFrame.h>
+#include <Geode/cocos/sprite_nodes/CCSpriteFrameCache.h>
+#include <Geode/cocos/support/CCPointExtension.h>
+#include <Geode/cocos/touch_dispatcher/CCTouchDispatcher.h>
+#include <Geode/loader/Event.hpp>
+#include <Geode/ui/Layout.hpp>
+#include <Geode/ui/SpacerNode.hpp>
+#include <Geode/utils/ZStringView.hpp>
+
+#include <algorithm>
+#include <functional>
+#include <matjson.hpp>
+#include <type_traits>
 #include <unordered_map>
-#include "../ui/Layout.hpp"
-#include "../ui/SpacerNode.hpp"
 
 // support converting ccColor3B / ccColor4B to / from json
 
@@ -340,7 +364,9 @@ namespace geode {
         }
 
         Ref<T>& operator=(Ref<T> const& other) {
-            this->swap(other.data());
+            if (this != &other) {
+                this->swap(other.data());
+            }
             return *this;
         }
 
@@ -403,6 +429,14 @@ namespace geode {
     class GEODE_DLL WeakRefPool final {
         std::unordered_map<cocos2d::CCObject*, std::shared_ptr<WeakRefController>> m_pool;
 
+        WeakRefPool();
+        ~WeakRefPool();
+
+        WeakRefPool(WeakRefPool const&) = delete;
+        WeakRefPool(WeakRefPool&&) = delete;
+        WeakRefPool& operator=(WeakRefPool const&) = delete;
+        WeakRefPool& operator=(WeakRefPool&&) = delete;
+
         void check(cocos2d::CCObject* obj);
 
         // Releases the object from the pool, removing the strong reference to it
@@ -446,7 +480,7 @@ namespace geode {
 
         std::shared_ptr<WeakRefController> m_controller;
 
-        WeakRef(std::shared_ptr<WeakRefController> obj) : m_controller(obj) {}
+        WeakRef(std::shared_ptr<WeakRefController> obj) : m_controller(std::move(obj)) {}
 
         friend class std::hash<WeakRef<T>>;
 
@@ -706,11 +740,21 @@ namespace geode::cocos {
      * Create a CCScene from a layer and switch to it with the default fade
      * transition
      * @param layer Layer to create a scene from
+     * @param replace Whether to replace the current scene
      * @returns Created scene (not the fade transition)
      */
-    GEODE_DLL cocos2d::CCScene* switchToScene(cocos2d::CCLayer* layer);
+    GEODE_DLL cocos2d::CCScene* switchToScene(cocos2d::CCLayer* layer, bool replace = false);
+
+    /**
+     * Switches to an existing CCScene using the default fade transition
+     * @param scene Scene to switch to
+     * @param replace Whether to replace the current scene
+     * @returns Created scene (identical to the argument)
+     */
+    GEODE_DLL cocos2d::CCScene* switchToScene(cocos2d::CCScene* scene, bool replace = false);
 
     using CreateLayerFunc = geode::Function<cocos2d::CCLayer*()>;
+    using CreateSceneFunc = geode::Function<cocos2d::CCScene*()>;
 
     /**
      * Reload textures, overwriting the scene to return to after the loading
@@ -719,7 +763,16 @@ namespace geode::cocos {
      * finished, the game switches to the given layer instead of MenuLayer.
      * Leave nullptr to enable default behaviour
      */
-    GEODE_DLL void reloadTextures(CreateLayerFunc returnTo = nullptr);
+    GEODE_DLL void reloadTextures(CreateLayerFunc returnTo);
+
+    /**
+     * Reload textures, overwriting the scene to return to after the loading
+     * screen is finished
+     * @param returnTo A function that returns a new scene. After loading is
+     * finished, the game switches to the given scene instead of MenuLayer.
+     * Leave nullptr to enable default behaviour
+     */
+    GEODE_DLL void reloadTextures(CreateSceneFunc returnTo = nullptr);
 
     /**
      * Rescale node to fit inside given size
@@ -787,10 +840,11 @@ namespace geode::cocos {
      *
      * @param parent Parent node to search in
      * @param name Name of the sprite frame to search for
+     * @param index Index of the sprite to get.
      * @returns Child with the given sprite frame name, or
      * nullptr if there is none
      */
-    GEODE_DLL cocos2d::CCNode* getChildBySpriteFrameName(cocos2d::CCNode* parent, const char* name);
+    GEODE_DLL cocos2d::CCNode* getChildBySpriteFrameName(cocos2d::CCNode* parent, const char* name, int index = 0);
 
     /**
      * Checks if a node has the given sprite name either
@@ -809,10 +863,11 @@ namespace geode::cocos {
      *
      * @param parent Parent node to search in
      * @param name Name of the sprite to search for
+     * @param index Index of the sprite to get.
      * @returns Child with the given sprite name, or
      * nullptr if there is none
      */
-    GEODE_DLL cocos2d::CCNode* getChildBySpriteName(cocos2d::CCNode* parent, const char* name);
+    GEODE_DLL cocos2d::CCNode* getChildBySpriteName(cocos2d::CCNode* parent, const char* name, int index = 0);
 
     /**
      * Gets the demangled name of an object using RTTI. The returned name does not include 'struct' or 'class'
@@ -969,12 +1024,36 @@ namespace geode::cocos {
     GEODE_DLL std::string cc4bToHexString(cocos2d::ccColor4B const& color);
 
     /**
-     * Gets the mouse position in cocos2d coordinates.
-     * On mobile platforms this will probably return (0, 0)
+     * Gets the mouse position in cocos2d coordinates. Bottom-left is (0, 0)
+     * and top-right winSize.
+     *
+     * @note Platform specifics:
+     * - Windows / macOS: gets the position of the OS cursor.
+     * - Android: a mouse position exists internally to handle scrolling. Returns
+     *   the coordinate of the most recent scroll, or the last value passed to
+     *   `setMousePos()`.
+     * - iOS: will always return the top-left coordinate (0, winSize.height).
+     *
+     * @see setMousePos(cocos2d::CCPoint const&)
+     *
      * @returns The mouse position
      */
     GEODE_DLL cocos2d::CCPoint getMousePos();
 
+    /**
+     * Sets the mouse position in cocos2d coordinates. Bottom-left is (0, 0)
+     * and top-right winSize.
+     *
+     * @note Platform specifics:
+     * - Windows / macOS: sets the position of the OS cursor.
+     * - Android: sets the mouse position reflected in `getMousePos()`.
+     * - iOS: no effect on this platform.
+     *
+     * @see getMousePos()
+     *
+     * @param pos The mouse position in cocos2d coordinates
+     */
+    GEODE_DLL void setMousePos(cocos2d::CCPoint const& pos);
 
     /**
      * Create an ObjWrapper without having to specify the template argument
@@ -1057,7 +1136,7 @@ namespace geode::cocos {
     concept CocosObjectPtr = std::is_pointer_v<T> && std::is_convertible_v<T, cocos2d::CCObject const*>;
 
     template <class K>
-    concept CocosDictionaryKey = std::same_as<K, int> || std::same_as<K, intptr_t> || std::same_as<K, gd::string> || std::same_as<K, std::string> || std::same_as<K, std::string_view> || std::same_as<K, const char*>;
+    concept CocosDictionaryKey = std::same_as<K, int> || std::same_as<K, intptr_t> || std::same_as<K, std::string> || std::same_as<K, std::string> || std::same_as<K, std::string_view> || std::same_as<K, const char*>;
 
     /**
      * A templated wrapper over CCArray, providing easy iteration and indexing.
@@ -1086,8 +1165,14 @@ namespace geode::cocos {
 
     public:
         using value_type = T*;
+        using reference = T*&;
+        using const_reference = T* const&;
         using iterator = T**;
-        using const_iterator = const T**;
+        using const_iterator = T* const*;
+        using reverse_iterator = std::reverse_iterator<iterator>;
+        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+        using size_type = std::size_t;
+        using difference_type = std::ptrdiff_t;
 
         CCArrayExt() : m_arr(cocos2d::CCArray::create()) {}
 
@@ -1106,35 +1191,62 @@ namespace geode::cocos {
             a.m_arr = nullptr;
         }
 
+        CCArrayExt& operator=(CCArrayExt const& rhs) {
+            m_arr = rhs.m_arr;
+            return *this;
+        }
+
+        CCArrayExt& operator=(CCArrayExt&& rhs) noexcept {
+            m_arr = rhs.m_arr;
+            rhs.m_arr = nullptr;
+            return *this;
+        }
+
         ~CCArrayExt() {}
 
-        T** begin() const {
+        iterator begin() const {
             if (!m_arr) {
                 return nullptr;
             }
             return reinterpret_cast<T**>(m_arr->data->arr);
         }
 
-        T** end() const {
+        iterator end() const {
             if (!m_arr) {
                 return nullptr;
             }
             return reinterpret_cast<T**>(m_arr->data->arr) + m_arr->count();
         }
 
-        auto rbegin() const {
+        const_iterator cbegin() const {
+            return this->begin();
+        }
+
+        const_iterator cend() const {
+            return this->end();
+        }
+
+        reverse_iterator rbegin() const {
             return std::reverse_iterator(this->end());
         }
 
-        auto rend() const {
+        reverse_iterator rend() const {
             return std::reverse_iterator(this->begin());
         }
 
-        size_t size() const {
-            return m_arr ? m_arr->count() : 0;
+        const_reverse_iterator crbegin() const {
+            return this->rbegin();
         }
 
-        T* operator[](size_t index) {
+        const_reverse_iterator crend() const {
+            return this->rend();
+        }
+
+        size_type size() const {
+            return m_arr ? static_cast<size_type>(m_arr->count()) : 0;
+        }
+
+        value_type operator[](size_t index) {
             return static_cast<T*>(m_arr->objectAtIndex(index));
         }
 
@@ -1142,10 +1254,47 @@ namespace geode::cocos {
             m_arr->addObject(item);
         }
 
-        T* pop_back() {
+        value_type pop_back() {
             T* ret = static_cast<T*>(m_arr->lastObject());
             m_arr->removeLastObject();
             return ret;
+        }
+
+        iterator erase(const_iterator pos) {
+            const auto index = pos - this->cbegin();
+            m_arr->removeObjectAtIndex(static_cast<unsigned int>(index));
+            return this->begin() + index;
+        }
+
+        iterator erase(const_iterator first, const_iterator last) {
+            const auto index = first - this->cbegin();
+            const auto count = last - first;
+            std::rotate(this->begin() + index, this->begin() + index + count, this->end());
+            for (difference_type i = 0; i < count; ++i) {
+                m_arr->removeLastObject();
+            }
+            return this->begin() + index;
+        }
+
+        void clear() {
+            m_arr->removeAllObjects();
+        }
+
+        iterator insert(const_iterator pos, value_type value) {
+            const auto index = pos - this->cbegin();
+            m_arr->insertObject(value, static_cast<unsigned int>(index));
+            return this->begin() + index;
+        }
+
+        template <std::input_iterator InputIt>
+        iterator insert(const_iterator pos, InputIt first, InputIt last) {
+            const auto index = pos - this->cbegin();
+            const auto oldSize = this->size();
+            for (; first != last; ++first) {
+                m_arr->addObject(*first);
+            }
+            std::rotate(this->begin() + index, this->begin() + oldSize, this->end());
+            return this->begin() + index;
         }
 
         cocos2d::CCArray* inner() {
@@ -1166,12 +1315,20 @@ namespace geode::cocos {
             return this->size() == 0;
         }
 
-        T* front() const {
+        value_type front() const {
             return static_cast<T*>(m_arr->firstObject());
         }
 
-        T* back() const {
+        value_type back() const {
             return static_cast<T*>(m_arr->lastObject());
+        }
+
+        void swap(CCArrayExt& rhs) noexcept {
+            std::swap(this->m_arr, rhs.m_arr);
+        }
+
+        friend void swap(CCArrayExt& lhs, CCArrayExt& rhs) noexcept {
+            lhs.swap(rhs);
         }
     };
 
@@ -1191,7 +1348,7 @@ namespace geode::cocos {
         std::pair<K, T*> operator*() {
             if constexpr (
                 std::is_same_v<K, std::string>
-                || std::is_same_v<K, gd::string>
+                || std::is_same_v<K, std::string>
                 || std::is_same_v<K, std::string_view>
                 || std::is_same_v<K, const char*>)
             {
@@ -1246,7 +1403,7 @@ namespace geode::cocos {
      * A templated wrapper over CCDictionary, providing easy iteration and indexing.
      * This will keep ownership of the given CCDictionary*.
      *
-     * @tparam Key Type of the key. MUST be one of: int, std::string_view (recommended), gd::string, std::string.
+     * @tparam Key Type of the key. MUST be one of: int, std::string_view (recommended), std::string, std::string.
      * @tparam ValuePtr Pointer to a type that inherits CCObject.
      *
      * @example

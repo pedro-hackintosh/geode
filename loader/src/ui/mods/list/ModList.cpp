@@ -1,17 +1,20 @@
 #include "ModList.hpp"
 #include <Geode/cocos/actions/CCActionInterval.h>
+#include <Geode/loader/ModEvent.hpp>
 #include <Geode/utils/cocos.hpp>
 #include <Geode/utils/ColorProvider.hpp>
 #include <Geode/ui/GeodeUI.hpp>
+#include <Geode/ui/Label.hpp>
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/ui/SimpleAxisLayout.hpp>
 #include <Geode/ui/Notification.hpp>
 #include "../popups/ModtoberPopup.hpp"
 #include "../popups/FiltersPopup.hpp"
 #include "../popups/SortPopup.hpp"
-#include "../GeodeStyle.hpp"
+#include "../../GeodeStyle.hpp"
 #include "../ModsLayer.hpp"
 #include "ModListItem.hpp"
+#include <Geode/cocos/robtop/sprite_nodes/CCFontSprite.h>
 
 static size_t getDisplayPageSize(ModListSource* src, ModListDisplay display) {
     if (src->isLocalModsOnly() && Mod::get()->getSettingValue<bool>("infinite-local-mods-list")) {
@@ -48,7 +51,10 @@ bool ModList::init(ModListSource* src, CCSize const& size, bool searchingDev) {
     }
 
     m_list = ScrollLayer::create(size);
-    this->addChildAtPosition(m_list, Anchor::Bottom, ccp(-m_list->getScaledContentWidth() / 2, 0));
+    // scroll clipping doesn't make sense when its the main (and only) scroll layer onscreen
+    m_list->enableScrollClipping(false);
+    m_list->setAnchorPoint(ccp(0.5f, 0));
+    this->addChildAtPosition(m_list, Anchor::Bottom);
 
     m_topContainer = CCNode::create();
     m_topContainer->setID("top-container");
@@ -92,7 +98,8 @@ bool ModList::init(ModListSource* src, CCSize const& size, bool searchingDev) {
 
         m_updateAllContainer->addChildAtPosition(m_updateAllBG, Anchor::Center);
 
-        m_updateCountLabel = TextArea::create("", "bigFont.fnt", .35f, size.width / 2 - 30, ccp(0, 1), 12.f, false);
+        // TODO: 2.209
+        m_updateCountLabel = TextArea::create("", "bigFont.fnt", .35f, size.width / 2 - 30, ccp(0, 1), 12.f, false, 0);
         m_updateCountLabel->setID("update-count-label");
         m_updateAllContainer->addChildAtPosition(m_updateCountLabel, Anchor::Left, ccp(10, 0), ccp(0, 0));
 
@@ -160,9 +167,10 @@ bool ModList::init(ModListSource* src, CCSize const& size, bool searchingDev) {
 
             m_errorsContainer->addChildAtPosition(errorsBG, Anchor::Center);
 
+            // TODO: 2.209 (change to Label?)
             auto errorsLabel = TextArea::create(
                 "There were <cy>errors</c> loading some mods",
-                "bigFont.fnt", .35f, size.width / 2 - 30, ccp(0, 1), 12.f, false
+                "bigFont.fnt", .35f, size.width / 2 - 30, ccp(0, 1), 12.f, false, 0
             );
             errorsLabel->setID("errors-label");
             m_errorsContainer->addChildAtPosition(errorsLabel, Anchor::Left, ccp(10, 0), ccp(0, 0));
@@ -217,7 +225,7 @@ bool ModList::init(ModListSource* src, CCSize const& size, bool searchingDev) {
     m_searchInput->setID("search-input");
     m_searchInput->setScale(.75f);
     m_searchInput->setAnchorPoint({ 0, .5f });
-    m_searchInput->setTextAlign(TextInputAlign::Left);
+    m_searchInput->setAlignment(Label::Alignment::Left);
     m_searchInput->setCommonFilter(CommonFilter::Any);
     m_searchInput->setCallback([this](auto const&) {
         float bufferTime = 0.4f;
@@ -229,7 +237,7 @@ bool ModList::init(ModListSource* src, CCSize const& size, bool searchingDev) {
         CCSequence* seq = CCSequence::create(
             CCDelayTime::create(bufferTime),
             CallFuncExt::create([this] {
-                m_source->search(m_searchInput->getString());
+                m_source->search(string::trim(m_searchInput->getString()));
             }),
             nullptr
         );
@@ -290,7 +298,7 @@ bool ModList::init(ModListSource* src, CCSize const& size, bool searchingDev) {
         limitNodeWidth(banner, size.width, 1.f, .1f);
         menu->addChildAtPosition(banner, Anchor::Center);
 
-        auto label = CCLabelBMFont::create("Modtober 2025 is Here!", "bigFont.fnt");
+        auto label = Label::create("Modtober 2025 is Here!", "bigFont.fnt");
         label->setScale(.5f);
         menu->addChildAtPosition(label, Anchor::Left, ccp(10, 0), ccp(0, .5f));
 
@@ -375,9 +383,9 @@ bool ModList::init(ModListSource* src, CCSize const& size, bool searchingDev) {
     m_statusContainer->setAnchorPoint({ .5f, .5f });
     m_statusContainer->ignoreAnchorPointForPosition(false);
 
-    m_statusTitle = CCLabelBMFont::create("", "bigFont.fnt");
+    m_statusTitle = Label::create("", "bigFont.fnt");
     m_statusTitle->setID("status-title-label");
-    m_statusTitle->setAlignment(kCCTextAlignmentCenter);
+    m_statusTitle->setAlignment(Label::Alignment::Center);
     m_statusContainer->addChild(m_statusTitle);
 
     m_statusDetailsBtn = CCMenuItemSpriteExtra::create(
@@ -429,7 +437,7 @@ void ModList::onPromise(ModListSource::PageLoadResult result) {
 
         // Create items
         bool first = true;
-        for (auto item : list) {
+        for (auto& item : list) {
             // Add separators between items after the first one
             if (!first) {
                 // auto separator = CCLayerColor::create(
@@ -452,7 +460,7 @@ void ModList::onPromise(ModListSource::PageLoadResult result) {
     }
     else {
         auto error = std::move(result).unwrapErr();
-        this->showStatus(ModListErrorStatus(), std::move(error.message), std::move(error.details));
+        this->showStatus(ModListErrorStatus(), error.message, std::move(error.details));
         this->updateState();
     }
 }
@@ -464,7 +472,6 @@ void ModList::setIsExiting(bool exiting) {
 void ModList::onPage(CCObject* sender) {
     // If no page count has been loaded yet, we can't do anything
     if (!m_source->getPageCount()) return;
-    auto pageCount = m_source->getPageCount().value();
 
     // Make sure you can't go beyond the limits
     if (sender->getTag() < 0 && m_page >= -sender->getTag()) {
@@ -512,7 +519,15 @@ void ModList::onCheckUpdates(InstalledModsUpdateCheck const& check) {
 
     m_hasDeprecations = check.modsWithDeprecations.size() > 0;
 
-    m_toggleUpdatesOnlyBtn->setContentSize(m_showUpdatesSpr->getScaledContentSize());
+    // Fix "Show Update" / "Show" button positioning
+    auto btnSize = m_showUpdatesSpr->getScaledContentSize();
+    m_toggleUpdatesOnlyBtn->setContentSize(btnSize);
+    m_toggleUpdatesOnlyBtn->m_onButton->setContentSize(btnSize);
+    m_toggleUpdatesOnlyBtn->m_offButton->setContentSize(btnSize);
+    m_toggleUpdatesOnlyBtn->m_onButton->setPosition(btnSize * 0.5f);
+    m_toggleUpdatesOnlyBtn->m_offButton->setPosition(btnSize * 0.5f);
+    m_showUpdatesSpr->setPosition(btnSize * 0.5f);
+    m_hideUpdatesSpr->setPosition(btnSize * 0.5f);
 
     // Recreate the menu with the updated label
     m_updateAllMenu->removeChild(m_updateAllBtn, true);
@@ -724,7 +739,7 @@ void ModList::showStatus(ModListStatus status, ZStringView message, std::optiona
 
     // Update status
     bool hasDetails = details.has_value();
-    m_statusTitle->setString(message.c_str());
+    m_statusTitle->setText(message);
     m_statusDetails->setText(std::move(details).value_or(""));
 
     // Update status visibility
@@ -791,4 +806,3 @@ ModList* ModList::create(ModListSource* src, CCSize const& size, bool searchingD
     delete ret;
     return nullptr;
 }
-

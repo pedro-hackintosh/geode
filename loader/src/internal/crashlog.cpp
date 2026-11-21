@@ -1,5 +1,5 @@
 #include "crashlog.hpp"
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include "about.hpp"
 #include "../loader/ModImpl.hpp"
 #include <Geode/Utils.hpp>
@@ -63,7 +63,7 @@ Mod* crashlog::CrashContext::modFromImage(Image const* image) {
         return nullptr;
     }
 
-    std::filesystem::path imagePath = image->name();
+    asp::fs::PathView imagePath = image->name();
     // if (!std::filesystem::exists(imagePath)) {
     //     return nullptr;
     // }
@@ -72,13 +72,12 @@ Mod* crashlog::CrashContext::modFromImage(Image const* image) {
     }
 
     for (auto& mod : Loader::get()->getAllMods()) {
-        std::error_code ec;
-
-        if (!mod->isLoaded() || !std::filesystem::exists(mod->getBinaryPath(), ec)) {
+        auto binaryPath = mod->getBinaryPath();
+        if (!mod->isLoaded() || !binaryPath.exists()) {
             continue;
         }
 
-        if (std::filesystem::equivalent(imagePath, mod->getBinaryPath(), ec)) {
+        if (binaryPath.equivalent(imagePath)) {
             return mod;
         }
     }
@@ -100,7 +99,7 @@ void crashlog::CrashContext::formatAddress(void const* addr, Buffer& stream, boo
             "{} ({} + {})",
             addr,
             shortName ? image->shortName() : image->name(),
-            reinterpret_cast<void const*>((uintptr_t)addr - (uintptr_t)image->address)
+            reinterpret_cast<void const*>((uintptr_t)addr - image->address)
         );
     } else {
         stream.append("{}", addr);
@@ -130,6 +129,7 @@ void crashlog::CrashContext::initialize(void const* crashAddr) {
     }
 
     // gather info
+    infoStream = {};
     this->writeInfo(infoStream);
 }
 
@@ -250,7 +250,7 @@ std::string_view crashlog::lookupFunctionByOffset(uintptr_t address) {
 }
 
 std::string crashlog::writeCrashlog(geode::Mod* faultyMod, std::string_view info, std::string_view stacktrace, std::string_view registers) {
-    std::filesystem::path outPath;
+    asp::fs::Path outPath;
     return writeCrashlog(faultyMod, info, stacktrace, registers, outPath);
 }
 
@@ -259,7 +259,7 @@ std::string crashlog::writeCrashlog(
     std::string_view info,
     std::string_view stacktrace,
     std::string_view registers,
-    std::filesystem::path& outPath
+    asp::fs::Path& outPath
 ) {
     // make sure crashlog directory exists
     (void)utils::file::createDirectoryAll(crashlog::getCrashLogDirectory());
@@ -304,22 +304,17 @@ std::string crashlog::writeCrashlog(
 
     // save actual file
     outPath = crashlog::getCrashLogDirectory() / (getDateString(true) + ".log");
-    std::ofstream actualFile;
-    actualFile.open(
-        outPath, std::ios::app
-    );
-    actualFile << file.view() << std::flush;
-    actualFile.close();
+    (void) utils::file::writeString(outPath, file.view());
 
     return file.str();
 }
 
 std::string crashlog::writeCrashlog(const CrashContext& ctx) {
-    std::filesystem::path outPath;
+    asp::fs::Path outPath;
     return writeCrashlog(ctx, outPath);
 }
 
-std::string crashlog::writeCrashlog(const CrashContext& ctx, std::filesystem::path& outCrashlogPath) {
+std::string crashlog::writeCrashlog(const CrashContext& ctx, asp::fs::Path& outCrashlogPath) {
     StringBuffer<> stacktrace;
     StringBuffer<> registers;
 

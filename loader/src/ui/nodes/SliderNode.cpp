@@ -1,5 +1,7 @@
 #include <Geode/ui/SliderNode.hpp>
+#include <Geode/ui/Label.hpp>
 #include <Geode/Geode.hpp>
+#include <Geode/cocos/extensions/network/HttpResponse.h>
 
 using namespace geode::prelude;
 
@@ -24,15 +26,19 @@ public:
     CCSprite* m_bar;
     geode::NineSlice* m_groove;
     
-    SliderCallback m_slideCallback;
-    SliderCallback m_clickCallback;
-    SliderCallback m_releaseCallback;
-    
     geode::TextInput* m_linkedTextInput;
     unsigned int m_textInputPrecision;
 
-    CCLabelBMFont* m_linkedLabel;
+    Label* m_linkedLabel;
     unsigned int m_labelPrecision;
+
+    SliderCallback m_slideCallback;
+    SliderCallback m_clickCallback;
+    SliderCallback m_releaseCallback;
+
+    geode::ListenerHandle m_slideListener;
+    geode::ListenerHandle m_clickListener;
+    geode::ListenerHandle m_releaseListener;
 
     int m_touchPriority = kCCMenuHandlerPriority;
 };
@@ -62,7 +68,7 @@ SliderNode* SliderNode::create(SliderCallback callback, bool alt) {
 }
 
 bool SliderNode::initCustom(CCSprite* thumb, CCSprite* thumbSelected, NineSlice* groove, ZStringView bar, SliderCallback callback, CCSize const& barOffset) {
-    if (!CCNode::init()) return false;
+    if (!CCNodeRGBA::init()) return false;
     if (!thumb || !thumbSelected || !groove) return false;
 
     m_impl->m_bar = CCSprite::create(bar.c_str());
@@ -82,12 +88,12 @@ bool SliderNode::initCustom(CCSprite* thumb, CCSprite* thumbSelected, NineSlice*
 
     m_impl->m_thumb->addChild(m_impl->m_thumbRegular);
     m_impl->m_thumb->addChild(m_impl->m_thumbSelected);
-    
+
     addChild(m_impl->m_thumb);
 
     m_impl->m_groove = groove;
     m_impl->m_bar->setZOrder(-1);
-    
+
     auto repeat = ccTexParams{GL_LINEAR, GL_LINEAR, GL_REPEAT, GL_REPEAT};
     m_impl->m_bar->getTexture()->setTexParameters(&repeat);
     m_impl->m_bar->setAnchorPoint({0.f, 0.5f});
@@ -96,6 +102,16 @@ bool SliderNode::initCustom(CCSprite* thumb, CCSprite* thumbSelected, NineSlice*
     addChild(m_impl->m_bar);
 
     m_impl->m_slideCallback = std::move(callback);
+    m_impl->m_slideListener = SliderNode::SliderEvent(this, SliderNode::SlideType::Slide).listen([this] (float value) {
+        if (m_impl->m_slideCallback) m_impl->m_slideCallback(this, value);
+    });
+    m_impl->m_clickListener = SliderNode::SliderEvent(this, SliderNode::SlideType::Click).listen([this] (float value) {
+        if (m_impl->m_clickCallback) m_impl->m_clickCallback(this, value);
+    });
+    m_impl->m_releaseListener = SliderNode::SliderEvent(this, SliderNode::SlideType::Release).listen([this] (float value) {
+        if (m_impl->m_releaseCallback) m_impl->m_releaseCallback(this, value);
+    });
+
     m_impl->m_barOffset = barOffset;
 
     setAnchorPoint({0.5f, 0.5f});
@@ -114,9 +130,9 @@ bool SliderNode::initCustom(CCSprite* thumb, CCSprite* thumbSelected, NineSlice*
 }
 
 bool SliderNode::initStandard(SliderCallback callback, bool alt) {
-    auto thumb = CCSprite::create("sliderthumb.png");
-    auto thumbSel = CCSprite::create("sliderthumbsel.png");
-    
+    auto thumb = CCSprite::create("sliderthumb.png"_spr);
+    auto thumbSel = CCSprite::create("sliderthumbsel.png"_spr);
+
     if (alt) {
         auto groove = geode::NineSlice::create("slider-groove-2.png"_spr);
         return initCustom(thumb, thumbSel, groove, "sliderBar2.png", std::move(callback), {2.f, 2.f});
@@ -130,7 +146,7 @@ bool SliderNode::initStandard(SliderCallback callback, bool alt) {
 void SliderNode::updateSize() {
     m_impl->m_groove->setContentSize(getContentSize());
     m_impl->m_groove->setPosition(getContentSize() / 2.f);
-    
+
     m_impl->m_bar->setContentWidth(getContentWidth() - m_impl->m_barOffset.width * 2);
 
     float usableHeight = getContentHeight() - m_impl->m_barOffset.height * 2.f;
@@ -197,7 +213,7 @@ void SliderNode::setPercent(float percent) {
     updateLinkedLabel();
     updateSize();
 
-    if (m_impl->m_slideCallback) m_impl->m_slideCallback(this, getValue());
+    SliderEvent(this, SlideType::Slide).send(getValue());
 }
 
 float SliderNode::getPercent() {
@@ -226,10 +242,10 @@ void SliderNode::updateLinkedTextInput() {
 void SliderNode::updateLinkedLabel() {
     if (m_impl->m_linkedLabel) {
         if (m_impl->m_labelPrecision != 0) {
-            m_impl->m_linkedLabel->setString(numToString(getValue(), m_impl->m_labelPrecision).c_str());
+            m_impl->m_linkedLabel->setText(numToString(getValue(), m_impl->m_labelPrecision));
         }
         else {
-            m_impl->m_linkedLabel->setString(numToString<int>(std::round(getValue())).c_str());
+            m_impl->m_linkedLabel->setText(numToString<int>(std::round(getValue())));
         }
     }
 }
@@ -251,7 +267,7 @@ void SliderNode::linkTextInput(geode::TextInput* input, unsigned int precision) 
                 m_impl->m_thumb->setPositionX(getContentWidth() * m_impl->m_percent);
                 updateSize();
                 updateLinkedLabel();
-                if (m_impl->m_slideCallback) m_impl->m_slideCallback(this, getValue());
+                SliderEvent(this, SlideType::Slide).send(getValue());
             }
         });
     }
@@ -275,7 +291,7 @@ geode::TextInput* SliderNode::getLinkedTextInput() {
     return m_impl->m_linkedTextInput;
 }
 
-void SliderNode::linkLabel(CCLabelBMFont* label, unsigned int precision) {
+void SliderNode::linkLabel(Label* label, unsigned int precision) {
     m_impl->m_linkedLabel = label;
     m_impl->m_labelPrecision = precision;
     updateLinkedLabel();
@@ -294,7 +310,7 @@ unsigned int SliderNode::getLabelPrecision() {
     return m_impl->m_labelPrecision;
 }
 
-CCLabelBMFont* SliderNode::getLinkedLabel() {
+Label* SliderNode::getLinkedLabel() {
     return m_impl->m_linkedLabel;
 }
 
@@ -363,7 +379,7 @@ void SliderNode::updateFromTouch(CCTouch* touch) {
 }
 
 bool SliderNode::ccTouchBegan(CCTouch* touch, CCEvent* event) {
-    if (!m_impl->m_enabled || !m_impl->m_thumb->isVisible() || m_impl->m_readOnly) return false;
+    if (!nodeIsVisible(this) || !m_impl->m_enabled || !m_impl->m_thumb->isVisible() || m_impl->m_readOnly) return false;
 
     auto location = m_impl->m_thumb->convertToNodeSpace(touch->getLocation());
     auto bounds = CCRect{0.f, 0.f, m_impl->m_thumb->getContentWidth(), m_impl->m_thumb->getContentHeight()};
@@ -380,7 +396,7 @@ bool SliderNode::ccTouchBegan(CCTouch* touch, CCEvent* event) {
 
     updateFromTouch(touch);
 
-    if (m_impl->m_clickCallback) m_impl->m_clickCallback(this, getValue());
+    SliderEvent(this, SlideType::Click).send(getValue());
 
     return true;
 }
@@ -398,7 +414,7 @@ void SliderNode::ccTouchEnded(CCTouch* touch, CCEvent* event) {
     m_impl->m_thumbRegular->setVisible(true);
     m_impl->m_thumbSelected->setVisible(false);
 
-    if (m_impl->m_releaseCallback) m_impl->m_releaseCallback(this, getValue());
+    SliderEvent(this, SlideType::Release).send(getValue());
 }
 
 void SliderNode::ccTouchCancelled(CCTouch* touch, CCEvent* event) {

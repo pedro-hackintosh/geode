@@ -4,8 +4,12 @@
 using namespace geode::prelude;
 
 struct GameReloadHook : Modify<GameReloadHook, GameManager> {
-    void reloadAllStep5() {
-        GameManager::reloadAllStep5();
-        GameEvent(GameEventType::TexturesUnloaded).send();
+    GEODE_FORWARD_COMPAT_DISABLE_HOOKS("GameManager textures unloaded event")
+
+    void reloadAllStep2() {
+        if (m_reloadTextures) {
+            GameEvent(GameEventType::TexturesUnloaded).send();
+        }
+        GameManager::reloadAllStep2();
     }
 };

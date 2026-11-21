@@ -43,14 +43,15 @@ public:
     void* m_address;
     void* m_detour;
     std::string m_displayName;
+    std::optional<std::string> m_modifyClassName;
     tulip::hook::HandlerMetadata m_handlerMetadata;
     tulip::hook::HookMetadata m_hookMetadata;
     tulip::hook::HookHandle m_handle = 0;
 
-    Result<> enable();
-    Result<> disable();
-    Result<> toggle();
-    Result<> toggle(bool enable);
+    Result<void, HookError> enable();
+    Result<void, HookError> disable();
+    Result<void, HookError> toggle();
+    Result<void, HookError> toggle(bool enable);
 
     uintptr_t getAddress() const;
     std::string_view getDisplayName() const;
@@ -60,7 +61,10 @@ public:
     int32_t getPriority() const;
     void setPriority(int32_t priority);
 
-    Result<> updateHookMetadata();
+    std::optional<std::string_view> getModifyClassName() const;
+    void setModifyClassName(std::string name);
+
+    Result<void, HookError> updateHookMetadata();
 
     friend class Hook;
     friend class Mod;

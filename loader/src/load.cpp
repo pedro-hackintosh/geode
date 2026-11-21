@@ -7,9 +7,16 @@
 #include <Geode/loader/Loader.hpp>
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
+#include <Geode/loader/ModEvent.hpp>
 #include <Geode/utils/JsonValidation.hpp>
 #include <Geode/utils/async.hpp>
 #include <loader/LogImpl.hpp>
+
+#include <Geode/platform/cplatform.h>
+
+#ifdef GEODE_IS_WINDOWS
+#include <Windows.h>
+#endif
 
 #include "internal/about.hpp"
 #include "utils/AntiStutterManager.hpp"
@@ -54,7 +61,7 @@ void tryLogForwardCompat() {
     if (!LoaderImpl::get()->isForwardCompatMode()) return;
     // TODO: change text later
     log::warn("+-----------------------------------------------------------------------------------+");
-    log::warn("| Geodmoded is running in a newer version of GD than Geomoded targets.              |");
+    log::warn("| Geode is running in a newer version of GD than Geode targets.                     |");
     log::warn("| Disabling UI and enabling platform console.                                       |");
     log::warn("| Expect crashes to be more common.                                                 |");
     log::warn("| If your game crashes, it is probably caused by an outdated mod, not Geode itself. |");
@@ -140,7 +147,7 @@ int geodeEntry(void* platformData) {
 
     tryLogForwardCompat();
 
-    auto begin = std::chrono::high_resolution_clock::now();
+    auto begin = asp::Instant::now();
 
     // set up internal mod, settings and data
     log::info("Setting up internal mod");
@@ -209,7 +216,9 @@ int geodeEntry(void* platformData) {
     if (logMaxAge > 0) {
         // put it in a task so that it doesn't slow down launch times
         async::runtime().spawnBlocking<void>([logMaxAge] {
-            log::Logger::get()->deleteOldLogs(std::chrono::days{logMaxAge});
+            if (auto e = log::Logger::get()->deleteOldLogs(asp::Duration::fromDays(logMaxAge)).err()) {
+                log::error("Unable to delete old logs: {}", e);
+            }
         });
     }
 
@@ -229,9 +238,7 @@ int geodeEntry(void* platformData) {
         log::info("Skipped loader update check");
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-    log::info("Entry took {}s", static_cast<float>(time) / 1000.f);
+    log::info("Entry took {}", begin.elapsed());
 
     // also log after entry so that users are more likely to notice
     tryLogForwardCompat();

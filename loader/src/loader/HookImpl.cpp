@@ -44,7 +44,7 @@ std::shared_ptr<Hook> Hook::Impl::create(
     });
 }
 
-Result<> Hook::Impl::enable() {
+Result<void, HookError> Hook::Impl::enable() {
     if (m_enabled) {
         return Ok();
     }
@@ -79,22 +79,29 @@ Result<> Hook::Impl::enable() {
     return Ok();
 }
 
-Result<> Hook::Impl::disable() {
+Result<void, HookError> Hook::Impl::disable() {
     if (!m_enabled)
         return Ok();
     GEODE_UNWRAP_INTO(auto handler, LoaderImpl::get()->getAndDecreaseHandler(m_address));
     tulip::hook::removeHook(handler, m_handle);
     m_enabled = false;
     GEODE_UNWRAP(LoaderImpl::get()->removeHandlerIfNeeded(m_address));
-    log::debug("Disabled {} hook", m_displayName);
+
+    if (m_owner) {
+        log::debug("Disabled {} hook for {}", m_displayName, m_owner->getID());
+    }
+    else {
+        log::debug("Disabled {} hook", m_displayName);
+    }
+
     return Ok();
 }
 
-Result<> Hook::Impl::toggle() {
+Result<void, HookError> Hook::Impl::toggle() {
     return this->toggle(!m_enabled);
 }
 
-Result<> Hook::Impl::toggle(bool enable) {
+Result<void, HookError> Hook::Impl::toggle(bool enable) {
     if (enable) {
         return this->enable();
     }
@@ -144,7 +151,17 @@ void Hook::Impl::setPriority(int32_t priority) {
     }
 }
 
-Result<> Hook::Impl::updateHookMetadata() {
+std::optional<std::string_view> Hook::Impl::getModifyClassName() const {
+    return m_modifyClassName.transform([](auto& s) {
+        return std::string_view{s};
+    });
+}
+
+void Hook::Impl::setModifyClassName(std::string name) {
+    m_modifyClassName = std::move(name);
+}
+
+Result<void, HookError> Hook::Impl::updateHookMetadata() {
     if (!m_enabled) return Ok();
     GEODE_UNWRAP_INTO(auto handler, LoaderImpl::get()->getHandler(m_address));
     tulip::hook::updateHookMetadata(handler, m_handle, m_hookMetadata);

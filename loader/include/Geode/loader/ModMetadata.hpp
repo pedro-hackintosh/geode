@@ -4,7 +4,8 @@
 #include <Geode/utils/ZStringView.hpp>
 #include "../utils/VersionInfo.hpp"
 #include "Types.hpp"
-#include <filesystem>
+#include <Geode/utils/StringMap.hpp>
+#include <asp/fs/Path.hpp>
 #include <matjson.hpp>
 #include <memory>
 #include <string>
@@ -134,7 +135,7 @@ namespace geode {
         /**
          * Path to the mod file
          */
-        [[nodiscard]] std::filesystem::path const& getPath() const;
+        [[nodiscard]] asp::fs::PathView getPath() const;
         /**
          * Name of the platform binary within
          * the mod zip
@@ -210,7 +211,7 @@ namespace geode {
         /**
          * Get the tags for this mod
          */
-        [[nodiscard]] std::unordered_set<std::string> const& getTags() const;
+        [[nodiscard]] utils::StringSet const& getTags() const;
         /**
          * Whether this mod has to be loaded before the loading screen or not
          */
@@ -241,6 +242,11 @@ namespace geode {
         [[nodiscard]] int getLoadPriority() const;
 
         /**
+         * Checks if mod can be installed on the current platform.
+         * Returns Ok() if it can, Err explaining why not otherwise.
+        */
+        Result<> checkPlatformSupported() const;
+        /**
          * Checks if mod can be installed on the current GD version.
          * Returns Ok() if it can, Err explaining why not otherwise.
         */
@@ -269,7 +275,7 @@ namespace geode {
         bool wasCompletelyUnparseable() const;
 
 #if defined(GEODE_EXPOSE_SECRET_INTERNALS_IN_HEADERS_DO_NOT_DEFINE_PLEASE)
-        void setPath(std::filesystem::path value);
+        void setPath(asp::fs::Path value);
         void setBinaryName(std::string value);
         void setVersion(VersionInfo value);
         void setID(std::string value);
@@ -286,7 +292,7 @@ namespace geode {
         void setIncompatibilities(std::vector<Incompatibility> value);
         void setSpritesheets(std::vector<std::string> value);
         void setSettings(std::vector<std::pair<std::string, matjson::Value>> value);
-        void setTags(std::unordered_set<std::string> value);
+        void setTags(utils::StringSet value);
         void setNeedsEarlyLoad(bool value);
         void setIsAPI(bool value);
         void setGameVersion(std::string value);
@@ -299,7 +305,7 @@ namespace geode {
          * function may fail if the JSON data is wrong; make sure to check
          * `hasErrors()` afterwards on the `ModMetadata`!
          */
-        static ModMetadata createFromGeodeFile(std::filesystem::path const& path);
+        static ModMetadata createFromGeodeFile(asp::fs::PathView path);
         /**
          * Create `ModMetadata` from a parsed json document. Note that this
          * function may fail if the JSON data is wrong; make sure to check
@@ -331,7 +337,7 @@ namespace geode {
         );
 
     private:
-        Result<> addSpecialFiles(std::filesystem::path const& dir);
+        Result<> addSpecialFiles(asp::fs::PathView dir);
         Result<> addSpecialFiles(utils::file::Unzip& zip);
 
         std::vector<std::pair<std::string, std::optional<std::string>*>> getSpecialFiles();

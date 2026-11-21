@@ -1,27 +1,33 @@
 #include "ModsLayer.hpp"
-#include <Geode/binding/CCMenuItemSpriteExtra.hpp>
-#include <Geode/loader/Dirs.hpp>
-#include <Geode/ui/BasedButtonSprite.hpp>
-#include <Geode/utils/file.hpp>
-#include <Geode/cocos/cocoa/CCObject.h>
-#include <Geode/loader/Event.hpp>
+
+#include "../GeodeStyle.hpp"
 #include "SwelvyBG.hpp"
+#include "popups/ConfirmInstall.hpp"
+#include "settings/KeybindsPopup.hpp"
+#include "ui/mods/sources/ModListSource.hpp"
+
+#include <Geode/binding/ButtonSprite.hpp>
+#include <Geode/binding/CCMenuItemSpriteExtra.hpp>
+#include <Geode/binding/MenuLayer.hpp>
+#include <Geode/binding/SetIDPopup.hpp>
+#include <Geode/binding/SetTextPopup.hpp>
+#include <Geode/binding/Slider.hpp>
+#include <Geode/cocos/cocoa/CCObject.h>
+#include <Geode/cocos/robtop/sprite_nodes/CCFontSprite.h>
+#include <Geode/loader/Dirs.hpp>
+#include <Geode/loader/Event.hpp>
+#include <Geode/mapping/CCTransitionFade.hpp>
+#include <Geode/ui/BasedButtonSprite.hpp>
+#include <Geode/ui/GeodeUI.hpp>
+#include <Geode/ui/Label.hpp>
+#include <Geode/ui/MDPopup.hpp>
+#include <Geode/ui/PopupManager.hpp>
+#include <Geode/ui/SimpleAxisLayout.hpp>
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/utils/ColorProvider.hpp>
+#include <Geode/utils/file.hpp>
 #include <Geode/utils/ranges.hpp>
-#include <Geode/ui/GeodeUI.hpp>
-#include <Geode/ui/SimpleAxisLayout.hpp>
-#include <Geode/binding/Slider.hpp>
-#include <Geode/binding/SetTextPopup.hpp>
-#include <Geode/binding/SetIDPopup.hpp>
-#include <Geode/binding/ButtonSprite.hpp>
-#include <Geode/binding/MenuLayer.hpp>
-#include "popups/ConfirmInstall.hpp"
-#include "GeodeStyle.hpp"
-#include "ui/mods/sources/ModListSource.hpp"
 #include <loader/LoaderImpl.hpp>
-#include <Geode/ui/MDPopup.hpp>
-#include "settings/KeybindsPopup.hpp"
 
 bool ModsStatusNode::init() {
     if (!CCNode::init())
@@ -37,12 +43,12 @@ bool ModsStatusNode::init() {
     m_statusBG->setContentSize({ 570, 40 });
     m_statusBG->setScale(.5f);
 
-    m_status = CCLabelBMFont::create("", "bigFont.fnt");
+    m_status = Label::create("", "bigFont.fnt");
     m_status->setID("status-label");
     m_status->setScale(.8f);
     m_statusBG->addChildAtPosition(m_status, Anchor::Center);
 
-    m_statusPercentage = CCLabelBMFont::create("", "bigFont.fnt");
+    m_statusPercentage = Label::create("", "bigFont.fnt");
     m_statusPercentage->setID("status-percentage-label");
     m_statusPercentage->setScale(.8f);
     m_statusBG->addChildAtPosition(m_statusPercentage, Anchor::Right, ccp(-35, 0));
@@ -162,7 +168,7 @@ void ModsStatusNode::updateState() {
 
         // If some downloads were cancelled, show the restart button normally
         case DownloadState::SomeCancelled: {
-            m_status->setString("Download(s) Cancelled");
+            m_status->setText("Download(s) Cancelled");
             m_status->setColor(ccWHITE);
             m_status->setVisible(true);
 
@@ -173,10 +179,10 @@ void ModsStatusNode::updateState() {
         // but also a "all done" status
         case DownloadState::AllDone: {
             if (downloads.size() == 1) {
-                m_status->setString(fmt::format("{} Mod Installed/Updated", downloads.size()).c_str());
+                m_status->setText(fmt::format("{} Mod Installed/Updated", downloads.size()));
             }
             else {
-                m_status->setString(fmt::format("{} Mods Installed/Updated", downloads.size()).c_str());
+                m_status->setText(fmt::format("{} Mods Installed/Updated", downloads.size()));
             }
             m_status->setColor("mod-list-enabled"_cc3b);
             m_status->setVisible(true);
@@ -186,7 +192,7 @@ void ModsStatusNode::updateState() {
         } break;
 
         case DownloadState::SomeErrored: {
-            m_status->setString("Some Download(s) Failed");
+            m_status->setText("Some Download(s) Failed");
             m_status->setColor("mod-list-disabled"_cc3b);
             m_status->setVisible(true);
             m_statusBG->setVisible(true);
@@ -204,10 +210,10 @@ void ModsStatusNode::updateState() {
                 }
             }
             if (totalToConfirm == 1) {
-                m_status->setString(fmt::format("Click to Confirm {} Download", totalToConfirm).c_str());
+                m_status->setText(fmt::format("Click to Confirm {} Download", totalToConfirm));
             }
             else {
-                m_status->setString(fmt::format("Click to Confirm {} Downloads", totalToConfirm).c_str());
+                m_status->setText(fmt::format("Click to Confirm {} Downloads", totalToConfirm));
             }
             m_status->setColor(ccWHITE);
             m_status->setVisible(true);
@@ -219,7 +225,7 @@ void ModsStatusNode::updateState() {
         } break;
 
         case DownloadState::SomeFetching: {
-            m_status->setString("Preparing Download(s)");
+            m_status->setText("Preparing Download(s)");
             m_status->setColor(ccWHITE);
             m_status->setVisible(true);
             m_loadingCircle->setVisible(true);
@@ -230,17 +236,20 @@ void ModsStatusNode::updateState() {
 
         case DownloadState::SomeDownloading: {
             size_t totalProgress = 0;
-            size_t totalDownloading = 0;
+
             for (auto& download : downloads) {
                 auto status = download.getStatus();
-                if (auto loading = std::get_if<server::DownloadStatusDownloading>(&status)) {
-                    totalProgress += loading->percentage;
-                    totalDownloading += 1;
+
+                if (std::holds_alternative<server::DownloadStatusDone>(status)) {
+                    totalProgress += 100;
+                } else if (auto downloading = std::get_if<server::DownloadStatusDownloading>(&status)) {
+                    totalProgress += downloading->percentage;
                 }
             }
-            auto percentage = totalProgress / static_cast<float>(totalDownloading);
+            auto totalDownloads = downloads.size();
+            auto percentage = totalProgress / static_cast<float>(totalDownloads);
 
-            m_statusPercentage->setString(fmt::format("{}%", static_cast<size_t>(percentage)).c_str());
+            m_statusPercentage->setText(fmt::format("{}%", static_cast<size_t>(percentage)));
             m_statusPercentage->setVisible(true);
             m_loadingCircle->setVisible(true);
             m_statusBG->setVisible(true);
@@ -318,7 +327,6 @@ bool ModsLayer::init() {
     auto winSize = CCDirector::get()->getWinSize();
     const bool isSafeMode = LoaderImpl::get()->isSafeMode();
 
-    const bool geodeTheme = isGeodeTheme();
     if (!isSafeMode) {
         auto listener = NodeProvidingEvent("geode-background"_spr).listen([this](cocos2d::CCNode*& nodeOut, std::string_view theme) -> void {
             if (nodeOut) return; // someone overrode it already
@@ -465,7 +473,7 @@ bool ModsLayer::init() {
 
     auto topListener = NodeProvidingEvent("geode-mods-list-top"_spr).listen([this](cocos2d::CCNode*& nodeOut, std::string_view theme) -> void {
         if (nodeOut) return; // someone overrode it already
-        
+
         if (theme == "sapphire") nodeOut = CCSprite::createWithSpriteFrameName("mods-list-top-sapphire.png"_spr);
         else if (theme == "geometry-dash") nodeOut = CCSprite::createWithSpriteFrameName("mods-list-top-gd.png"_spr);
         else nodeOut = CCSprite::createWithSpriteFrameName("mods-list-top.png"_spr);
@@ -616,7 +624,7 @@ bool ModsLayer::init() {
     m_pageMenu->setAnchorPoint({ 1.f, 1.f });
     m_pageMenu->setScale(.65f);
 
-    m_pageLabel = CCLabelBMFont::create("", "goldFont.fnt");
+    m_pageLabel = Label::create("", "goldFont.fnt");
     m_pageLabel->setID("page-label");
     m_pageLabel->setAnchorPoint({ .5f, 1.f });
     m_pageMenu->addChild(m_pageLabel);
@@ -666,7 +674,7 @@ bool ModsLayer::init() {
 
     // add safe mode label
     if (isSafeMode) {
-        auto* label = CCLabelBMFont::create("Safe Mode Enabled", "bigFont.fnt");
+        auto* label = Label::create("Safe Mode Enabled", "bigFont.fnt");
         label->setPosition(winSize.width, 0);
         label->setAnchorPoint(ccp(1, 0));
         label->setOpacity(128);
@@ -674,14 +682,13 @@ bool ModsLayer::init() {
         label->setScale(0.55f);
         this->addChild(label);
         static int _ = [this] {
-            auto* alert = FLAlertLayer::create(
+            auto alert = PopupManager::get().alert(
                 "Safe Mode Enabled",
                 "Safe Mode has been enabled. This means no mods will be loaded to prevent crashes. Feel free to manage any problematic mods.",
                 "OK"
             );
-            alert->m_scene = this;
             alert->m_noElasticity = true;
-            alert->show();
+            alert.showQueue();
             return 0;
         }();
     }
@@ -765,8 +772,7 @@ void ModsLayer::updateState() {
         auto total = m_currentSource->getItemCount().value();
 
         // Set the page count string
-        auto fmt = fmt::format("Page {}/{} (Total {})", page, count, total);
-        m_pageLabel->setString(fmt.c_str());
+        m_pageLabel->setText(fmt::format("Page {}/{} (Total {})", page, count, total));
 
         // Make page menu visible
         m_pageMenu->setVisible(true);
@@ -940,7 +946,7 @@ void ModsLayer::installModFromFile() {
             .description = "Geode Mods",
             .files = { "*.geode" },
         }}
-    }), [](Result<std::optional<std::filesystem::path>> result) {
+    }), [](Result<std::optional<asp::fs::Path>> result) {
         if (result.isOk() && result.unwrap().has_value()) {
             LoaderImpl::get()->installModManuallyFromFile(std::move(result).unwrap().value(), []() {
                 InstalledModListSource::get(InstalledModListType::All)->clearCache();

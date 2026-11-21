@@ -3,14 +3,15 @@
 #include <Geode/ui/Popup.hpp>
 #include <Geode/ui/MDTextArea.hpp>
 #include <Geode/ui/NineSlice.hpp>
+#include <Geode/ui/Label.hpp>
 #include "../sources/ModSource.hpp"
-#include "../GeodeStyle.hpp"
+#include "../../GeodeStyle.hpp"
 #include "../UpdateModListState.hpp"
 #include <server/DownloadManager.hpp>
 
 using namespace geode::prelude;
 
-class ModPopup : public GeodePopup {
+class ModPopup : public geode::GeodePopup {
 public:
     enum class Tab {
         Details,
@@ -30,10 +31,10 @@ protected:
     CCMenuItemSpriteExtra* m_unavailableBtn;
     CCMenuItemSpriteExtra* m_updateBtn;
     CCMenuItemSpriteExtra* m_cancelBtn;
-    CCLabelBMFont* m_installStatusLabel;
+    geode::Label* m_installStatusLabel;
     NineSlice* m_installBG;
     NineSlice* m_settingsBG;
-    CCLabelBMFont* m_enabledStatusLabel;
+    geode::Label* m_enabledStatusLabel;
     ButtonSprite* m_restartRequiredLabel;
     CCNode* m_rightColumn;
     CCNode* m_currentTabPage = nullptr;

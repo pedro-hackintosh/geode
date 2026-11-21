@@ -1,4 +1,5 @@
 #include <Geode/DefaultInclude.hpp>
+#include <Windows.h>
 
 #include <Geode/loader/Mod.hpp>
 #include <loader/ModImpl.hpp>
@@ -20,8 +21,8 @@ char const* getUsefulError(DWORD code) {
             return "ERROR_MOD_NOT_FOUND;\n\nThe mod is either missing the DLL "
                    "file or some of its dependencies. Make sure to list all "
                    "other mods you depend on under dependencies in mod.json  "
-                   "and that the mod is not built in Debug. "
-                   "\n\nIf you are not the developer of this mod, report this error "
+                   "and that the mod is not built in Debug.\n\n"
+                   "If you are not the developer of this mod, report this error "
                    "to them as it is likely not your fault. Also try [updating "
                    "Microsoft Visual C++ Redistributable 2026 (64-bit).](https://aka.ms/vc14/vc_redist.x64.exe)";
 
@@ -41,18 +42,18 @@ char const* getUsefulError(DWORD code) {
                    "to them as it is likely not your fault.";
 
         case 4551:
-            return "Blocked by Windows Smart App Control (4551);\n\nWindows prevented"
+            return "Blocked by Windows Smart App Control (4551);\n\nWindows prevented "
                     "the mod from loading because it is an unrecognized application. "
                     "This is a security feature in Windows that blocks applications "
                     "from small developers - including most Geometry Dash mods.\n\n"
-                    "You can disable Smart App Control in Windows Security settings to make the mod load."
+                    "You can disable Smart App Control in Windows Security settings to make the mod load. "
                     "[Click here to learn more about Smart App Control](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview).";
         case 0xc0e90002:
-            return "Blocked by Windows Smart App Control (0xc0e90002);\n\nWindows prevented"
+            return "Blocked by Windows Smart App Control (0xc0e90002);\n\nWindows prevented "
                     "the mod from loading because it is an unrecognized application. "
                     "This is a security feature in Windows that blocks applications "
                     "from small developers - including most Geometry Dash mods.\n\n"
-                    "You can disable Smart App Control in Windows Security settings to make the mod load."
+                    "You can disable Smart App Control in Windows Security settings to make the mod load. "
                     "[Click here to learn more about Smart App Control](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview).";
 
         default: break;
@@ -70,11 +71,9 @@ std::string getLastWinError() {
 }
 
 Result<> Mod::Impl::loadPlatformBinary() {
-    auto load = LoadLibraryW(this->getBinaryPath().c_str());
+    auto load = LoadLibraryW(this->getBinaryPath().native().c_str());
     if (load) {
-        if (m_platformInfo) {
-            delete m_platformInfo;
-        }
+        delete m_platformInfo;
         m_platformInfo = new PlatformInfo { load };
 
         auto geodeImplicitEntry = findSymbolOrMangled<void(*)()>(load, "geodeImplicitEntry", "_geodeImplicitEntry@0");
@@ -89,4 +88,13 @@ Result<> Mod::Impl::loadPlatformBinary() {
         return Ok();
     }
     return Err("Unable to load the DLL: " + getLastWinError());
+}
+
+void Mod::Impl::addNativeBinariesPath(asp::fs::Path const& path) {
+    // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-adddlldirectory#remarks
+    static auto runOnce = [] {
+        SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+        return 0;
+    }();
+    AddDllDirectory(path.native().c_str());
 }

@@ -119,7 +119,7 @@ static enumKeyCodes keyToKeyCode(int code) {
         case UIKeyboardHIDUsageKeyboardSemicolon: return enumKeyCodes::KEY_Semicolon;
         case UIKeyboardHIDUsageKeyboardQuote: return enumKeyCodes::KEY_Apostrophe;
         case UIKeyboardHIDUsageKeyboardSlash: return enumKeyCodes::KEY_Slash;
-        case UIKeyboardHIDUsageKeyboardEqualSign: return enumKeyCodes::KEY_Equal;
+        case UIKeyboardHIDUsageKeyboardEqualSign: return enumKeyCodes::KEY_OEMEqual;
         case UIKeyboardHIDUsageKeyboardOpenBracket: return enumKeyCodes::KEY_LeftBracket;
         case UIKeyboardHIDUsageKeyboardBackslash: return enumKeyCodes::KEY_Backslash;
         case UIKeyboardHIDUsageKeyboardCloseBracket: return enumKeyCodes::KEY_RightBracket;
@@ -144,7 +144,7 @@ static enumKeyCodes keyToKeyCode(int code) {
         case UIKeyboardHIDUsageKeypadHyphen: return enumKeyCodes::KEY_Subtract;
         case UIKeyboardHIDUsageKeypadPlus: return enumKeyCodes::KEY_Add;
         case UIKeyboardHIDUsageKeypadEnter: return enumKeyCodes::KEY_NumEnter;
-        case UIKeyboardHIDUsageKeypadEqualSign: return enumKeyCodes::KEY_OEMEqual;
+        case UIKeyboardHIDUsageKeypadEqualSign: return enumKeyCodes::KEY_Equal;
 
         default: return enumKeyCodes::KEY_Unknown;
     }
@@ -169,6 +169,19 @@ static enumKeyCodes buttonToKeyCode(GCExtendedGamepad* pad, GCControllerButtonIn
 
     if (btn == pad.buttonOptions) return enumKeyCodes::CONTROLLER_Back;
     if (btn == pad.buttonMenu) return enumKeyCodes::CONTROLLER_Start;
+
+    if (btn == pad.leftThumbstick.up) return enumKeyCodes::CONTROLLER_LTHUMBSTICK_UP;
+    if (btn == pad.leftThumbstick.down) return enumKeyCodes::CONTROLLER_LTHUMBSTICK_DOWN;
+    if (btn == pad.leftThumbstick.left) return enumKeyCodes::CONTROLLER_LTHUMBSTICK_LEFT;
+    if (btn == pad.leftThumbstick.right) return enumKeyCodes::CONTROLLER_LTHUMBSTICK_RIGHT;
+
+    if (btn == pad.rightThumbstick.up) return enumKeyCodes::CONTROLLER_RTHUMBSTICK_UP;
+    if (btn == pad.rightThumbstick.down) return enumKeyCodes::CONTROLLER_RTHUMBSTICK_DOWN;
+    if (btn == pad.rightThumbstick.left) return enumKeyCodes::CONTROLLER_RTHUMBSTICK_LEFT;
+    if (btn == pad.rightThumbstick.right) return enumKeyCodes::CONTROLLER_RTHUMBSTICK_RIGHT;
+
+    if (btn == pad.leftThumbstickButton) return enumKeyCodes::CONTROLLER_L3;
+    if (btn == pad.rightThumbstickButton) return enumKeyCodes::CONTROLLER_R3;
 
     return enumKeyCodes::KEY_Unknown;
 }

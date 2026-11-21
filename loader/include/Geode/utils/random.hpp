@@ -3,18 +3,24 @@
 #include <Geode/platform/platform.hpp>
 #include <cstdint>
 #include <type_traits>
-#include <cstring>
+#include <iterator>
+#include <limits>
+#include <cmath>
 #include <array>
-#include <random>
 
 namespace geode::utils::random {
+    class Generator;
+
     /// Generates a secure random 64-bit integer from the OS
-    inline uint64_t secureU64() {
-        std::random_device rd;
-        uint32_t a = rd();
-        uint32_t b = rd();
-        return (static_cast<uint64_t>(a) << 32) | static_cast<uint64_t>(b);
-    }
+    GEODE_DLL uint64_t secureU64();
+
+    /// Uses the given generator to generate an integer value of type T in range [min, max), uniformly distributed over the range.
+    template <typename T>
+    T uniformInt(T min, T max, Generator& gen);
+
+    /// Uses the given generator to generate a floating point value of type T in range [min, max), uniformly distributed over the range.
+    template <typename T>
+    T uniformReal(T min, T max, Generator& gen);
 
     /// A PRNG engine using the RomuTrio algorithm.
     /// This engine is fully inlined, requires small amount of storage and is very fast and reseedable.
@@ -33,7 +39,21 @@ namespace geode::utils::random {
 
         /// Re-seeds the generator with the given seed
         void seed(uint64_t seed) {
-            m_x = m_y = m_z = seed;
+            // use SplitMix64 to generate a good, random initial state from the seed
+            std::array<uint64_t, 3> state;
+
+            uint64_t x = seed;
+            for (size_t i = 0; i < 3; i++) {
+                x += 0x9E3779B97F4A7C15ull;
+                uint64_t z = x;
+                z = (z ^ (z >> 30ull)) * 0xBF58476D1CE4E5B9ull;
+                z = (z ^ (z >> 27ull)) * 0x94D049BB133111EBull;
+                state[i] = z ^ (z >> 31ull);
+            }
+
+            m_x = state[0];
+            m_y = state[1];
+            m_z = state[2];
         }
 
         /// Generates the next random 64-bit integer
@@ -58,7 +78,7 @@ namespace geode::utils::random {
             if constexpr (std::is_same_v<T, bool>) {
                 return (this->next() & 1) != 0;
             } else if constexpr (std::is_integral_v<T>) {
-                return this->generate<T>(std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+                return static_cast<T>(this->next());
             } else if constexpr (std::is_floating_point_v<T>) {
                 return this->generate<T>(0.0, 1.0);
             } else {
@@ -75,21 +95,23 @@ namespace geode::utils::random {
             typename Out = std::conditional_t<std::is_void_v<R>, std::common_type_t<T, Y>, R>
         >
         Out generate(T min_, Y max_) {
-            if (max_ <= min_) return static_cast<Out>(min_);
+            if constexpr (std::is_integral_v<Out> && !std::is_same_v<Out, bool>) {
+                using C = std::common_type_t<T, Y, Out>;
+                using Wide = std::conditional_t<std::is_signed_v<Out>, std::make_signed_t<C>, C>;
 
-            if constexpr (std::is_integral_v<Out>) {
-                // uniform int distribution does not support chars :)
-                if constexpr (sizeof(Out) == 1) {
-                    return static_cast<Out>(this->generate<int>(static_cast<int>(min_), static_cast<int>(max_)));
-                } else {
-                    std::uniform_int_distribution<Out> dist(min_, max_ - 1);
-                    return dist(*this);
-                }
+                auto min = static_cast<Wide>(min_);
+                auto max = static_cast<Wide>(max_);
+                if (max <= min) return min;
+
+                return uniformInt(min, max, *this);
             } else if constexpr (std::is_floating_point_v<Out>) {
-                std::uniform_real_distribution<Out> dist(min_, max_);
-                return dist(*this);
+                auto min = static_cast<Out>(min_);
+                auto max = static_cast<Out>(max_);
+                if (max <= min) return min;
+
+                return uniformReal(min, max, *this);
             } else {
-                static_assert(!std::is_same_v<T, T>, "unsupported type for generate");
+                static_assert(!std::is_same_v<T, T>, "unsupported type for generate(min, max)");
             }
         }
 
@@ -155,6 +177,16 @@ namespace geode::utils::random {
         shuffle(begin(cont), end(cont));
     }
 
+    /// Returns a reference to a random element in the given collection.
+    /// Undefined behavior if the collection is empty.
+    template <typename Cont>
+    auto& choice(Cont& cont) {
+        using std::begin, std::end;
+        auto it = begin(cont);
+        std::advance(it, generate<size_t>(0, std::distance(begin(cont), end(cont))));
+        return *it;
+    }
+
     /// Returns a boolean with a specified probability of being true, in the range [0.0, 1.0]
     inline bool chance(double probability) {
         return generate<double>() < probability;
@@ -168,4 +200,47 @@ namespace geode::utils::random {
     GEODE_DLL std::string generateUUID();
 
     GEODE_DLL void fillBytes(void* buffer, size_t size);
+
+    template <typename T>
+    T uniformInt(T min, T max, Generator& gen) {
+        static_assert(std::is_integral_v<T>);
+        using U = std::make_unsigned_t<T>;
+
+        U uMaxValue = std::numeric_limits<U>::max();
+        U count = static_cast<U>(max) - static_cast<U>(min);
+        if (count == 0) return min;
+
+        U scaling = uMaxValue / count;
+        U past = scaling * count;
+
+        // we reject values >= past
+        U x;
+        do {
+            x = gen.generate<U>();
+        } while (x >= past);
+
+        return static_cast<T>(static_cast<U>(min) + x / scaling);
+    }
+
+    template <typename T>
+    T uniformReal(T min, T max, Generator& gen) {
+        static_assert(std::is_floating_point_v<T>);
+        using U = typename Generator::result_type;
+
+        static constexpr auto ubits = std::numeric_limits<U>::digits;
+        static constexpr auto tbits = std::numeric_limits<T>::digits;
+        static_assert(ubits >= tbits);
+
+        auto value = gen.next();
+        auto u = static_cast<T>(value >> (ubits - tbits)) * std::ldexp(T{1}, -static_cast<int>(tbits));
+
+        T result = min + (max - min) * u;
+
+        // rounding can put us over the max, so we need to clamp it
+        if (result >= max) {
+            result = std::nextafter(max, min);
+        }
+
+        return result;
+    }
 }

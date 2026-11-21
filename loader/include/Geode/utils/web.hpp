@@ -10,10 +10,8 @@
 #include <asp/time/Duration.hpp>
 #include <matjson.hpp>
 #include <Geode/Result.hpp>
-#include <chrono>
 #include <optional>
 #include <string_view>
-#include <span>
 
 namespace geode::utils::web {
     /**
@@ -113,8 +111,8 @@ namespace geode::utils::web {
             return this->param(std::move(name), fmt::to_string(value));
         }
 
-        MultipartForm& file(std::string name, std::span<uint8_t const> data, std::string filename, std::string mime = "application/octet-stream");
-        Result<MultipartForm&> file(std::string name, std::filesystem::path const& path, std::string mime = "application/octet-stream");
+        MultipartForm& file(std::string name, ByteSpan data, std::string filename, std::string mime = "application/octet-stream");
+        Result<MultipartForm&> file(std::string name, asp::fs::PathView path, std::string mime = "application/octet-stream");
 
         /**
          * Returns the unique boundary string used in the multipart form.
@@ -187,7 +185,7 @@ namespace geode::utils::web {
         Result<matjson::Value> json() const;
         ByteVector const& data() const&;
         ByteVector data() &&;
-        Result<> into(std::filesystem::path const& path) const;
+        Result<> into(asp::fs::PathView path) const;
 
         std::vector<std::string> headers() const;
         std::optional<ZStringView> header(std::string_view name) const;
@@ -333,7 +331,7 @@ namespace geode::utils::web {
          * @param time
          * @return WebRequest&
          */
-        WebRequest& timeout(std::chrono::seconds time);
+        WebRequest& timeout(asp::Duration time);
 
         /**
          * Sets the target byte range to request.
@@ -462,30 +460,44 @@ namespace geode::utils::web {
         /**
          * Gets the request method as a string
          *
-         * @return std::string
+         * @return geode::ZStringView
          */
         ZStringView getMethod() const;
 
         /**
          * Gets the request URL
          *
-         * @return std::string
+         * @return geode::ZStringView
          */
         ZStringView getUrl() const;
 
         /**
          * Gets the request headers
          *
-         * @return std::unordered_map<std::string, std::vector<std::string>>
+         * @return geode::utils::StringMap<std::vector<std::string>>
          */
         utils::StringMap<std::vector<std::string>> const& getHeaders() const;
 
         /**
+         * Gets the user agent
+         *
+         * @return geode::ZStringView
+         */
+        std::optional<ZStringView> getUserAgent() const;
+
+        /**
          * Gets the parameters inside the URL
          *
-         * @return std::unordered_map<std::string, std::string>
+         * @return geode::utils::StringMap<std::string>
          */
         utils::StringMap<std::string> const& getUrlParams() const;
+
+        /**
+         * Gets the post body stream reference
+         *
+         * @return std::optional<ByteSpan>
+         */
+        std::optional<ByteSpan> getBodyRef() const;
 
         /**
          * Gets the post body stream
@@ -497,9 +509,9 @@ namespace geode::utils::web {
         /**
          * Gets the request timeout in seconds
          *
-         * @return std::optional<std::chrono::seconds>
+         * @return std::optional<asp::Duration>
          */
-        std::optional<std::chrono::seconds> getTimeout() const;
+        std::optional<asp::Duration> getTimeout() const;
 
         /**
          * Gets HTTP versions applied to the request
@@ -538,8 +550,8 @@ namespace geode::utils::web {
      * WebRequestInterceptEvent(Mod::get()->getID()).listen([](auto& req) { return ListenerResult::Propagate; }, Priority::Normal);
      * WebRequestInterceptEvent().listen([](auto id, auto& req) { return ListenerResult::Stop; }, Priority::VeryEarly);
      */
-    struct WebRequestInterceptEvent : ThreadSafeGlobalEvent<WebRequestInterceptEvent, bool(std::string_view, WebRequest&), bool(WebRequest&), std::string> {
-        using ThreadSafeGlobalEvent::ThreadSafeGlobalEvent;
+    struct WebRequestInterceptEvent : GlobalEvent<WebRequestInterceptEvent, bool(std::string_view modID, WebRequest& req), bool(WebRequest& req), void(std::string modID)> {
+        using GlobalEvent::GlobalEvent;
     };
 
     /**
@@ -548,8 +560,8 @@ namespace geode::utils::web {
      * @example
      * IDBasedWebRequestInterceptEvent(req.getID()).listen([](auto& req) { return ListenerResult::Propagate; }, Priority::Normal);
      */
-    struct IDBasedWebRequestInterceptEvent : ThreadSafeEvent<IDBasedWebRequestInterceptEvent, bool(WebRequest&), size_t> {
-        using ThreadSafeEvent::ThreadSafeEvent;
+    struct IDBasedWebRequestInterceptEvent : Event<IDBasedWebRequestInterceptEvent, bool(WebRequest& req), void(size_t reqID)> {
+        using Event::Event;
     };
 
     /**
@@ -559,8 +571,8 @@ namespace geode::utils::web {
      * WebResponseEvent(Mod::get()->getID()).listen([](auto const& res) { return ListenerResult::Propagate; }, Priority::Normal);
      * WebResponseEvent().listen([](auto id, auto const& res) { return ListenerResult::Stop; }, Priority::VeryEarly);
      */
-    struct WebResponseEvent : ThreadSafeGlobalEvent<WebResponseEvent, bool(std::string_view, WebResponse const&), bool(WebResponse const&), std::string> {
-        using ThreadSafeGlobalEvent::ThreadSafeGlobalEvent;
+    struct WebResponseEvent : GlobalEvent<WebResponseEvent, bool(std::string_view modID, WebResponse const& res), bool(WebResponse const& res), void(std::string modID)> {
+        using GlobalEvent::GlobalEvent;
     };
 
     /**
@@ -569,7 +581,7 @@ namespace geode::utils::web {
      * @example
      * IDBasedWebResponseEvent(req.getID()).listen([](auto const& res) { return ListenerResult::Propagate; }, Priority::Normal);
      */
-    struct IDBasedWebResponseEvent : ThreadSafeEvent<IDBasedWebResponseEvent, bool(WebResponse const&), size_t> {
-        using ThreadSafeEvent::ThreadSafeEvent;
+    struct IDBasedWebResponseEvent : Event<IDBasedWebResponseEvent, bool(WebResponse const& res), void(size_t reqID)> {
+        using Event::Event;
     };
 }

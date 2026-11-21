@@ -7,19 +7,20 @@
 #include <Geode/utils/hash.hpp>
 #include <asp/time/SystemTime.hpp>
 #include "../DefaultInclude.hpp"
+#include <Geode/cocos/cocoa/CCGeometry.h>
 #include <chrono>
 #include <iomanip>
 #include <string>
 #include <array>
 #include <vector>
-#include <filesystem>
+#include <asp/fs/Path.hpp>
 #include <matjson.hpp>
 #include <span>
 #include <charconv>
 #include <clocale>
 #include <type_traits>
+#include <variant>
 #include <fmt/format.h>
-#include <cocos2d.h>
 
 namespace geode {
     using ByteVector = std::vector<uint8_t>;
@@ -149,40 +150,107 @@ namespace geode {
          * @param num Number to convert to string
          * @returns Number as string
          */
-        template <std::integral Num>
+        template <std::integral Num> requires (!std::same_as<std::remove_cv_t<Num>, bool>)
         std::string numToAbbreviatedString(Num num) {
-            // it's a mess... i'm sorry...
-            constexpr auto numToFixedTrunc = [](float num) {
+            bool negative = false;
+            uint64_t abs = 0;
 
-                // calculate the number of digits we keep from the decimal
-                auto remaining = std::max(3 - static_cast<int>(std::log10(num)) - 1, 0);
+            if constexpr (std::is_signed_v<Num>) {
+                if (num < 0) {
+                    negative = true;
+                    abs = static_cast<uint64_t>(0) - static_cast<uint64_t>(num);
+                }
+                else {
+                    abs = static_cast<uint64_t>(num);
+                }
+            }
+            else {
+                abs = static_cast<uint64_t>(num);
+            }
 
-                auto factor = std::pow(10, remaining);
-                auto trunc = std::trunc(num * factor) / factor;
-
-                // doing this dynamic format thing lets the .0 show when needed
-                return fmt::format("{:0.{}f}", trunc, static_cast<int>(remaining));
+            struct Scale {
+                uint64_t threshold;
+                std::string_view suffix;
             };
 
-            if (num >= 1'000'000'000) return fmt::format("{}B", numToFixedTrunc(num / 1'000'000'000.f));
-            if (num >= 1'000'000) return fmt::format("{}M", numToFixedTrunc(num / 1'000'000.f));
-            if (num >= 1'000) return fmt::format("{}K", numToFixedTrunc(num / 1'000.f));
+            constexpr Scale scales[] = {
+                {1'000'000'000'000'000ull, "Q"},
+                {1'000'000'000'000ull, "T"},
+                {1'000'000'000ull, "B"},
+                {1'000'000ull, "M"},
+                {1'000ull, "K"},
+            };
+
+            for (auto const& [threshold, suffix] : scales) {
+                if (abs < threshold) {
+                    continue;
+                }
+                uint64_t whole = abs / threshold;
+                uint64_t rem = abs % threshold;
+                std::string result;
+                if (whole >= 100) {
+                    result = fmt::format("{}{}", whole, suffix);
+                }
+                else if (whole >= 10) {
+                    uint64_t frac = rem / (threshold / 10);
+                    result = fmt::format("{}.{}{}", whole, frac, suffix);
+                }
+                else {
+                    uint64_t frac = rem / (threshold / 100);
+                    result = fmt::format("{}.{:02d}{}", whole, frac, suffix);
+                }
+                return negative ? "-" + result : result;
+            }
             return numToString(num);
         }
 
-        namespace _detail {
-            GEODE_DLL Result<long double> longDoubleFromString(std::string_view str);
-            GEODE_DLL Result<double> doubleFromString(std::string_view str);
-            GEODE_DLL Result<float> floatFromString(std::string_view str);
+        struct NumParseError {
+            enum {
+                Unknown = -1,
+                TrailingData = 0,
+                NotANumber,
+                OutOfRange,
+            };
 
-            GEODE_DLL Result<uint64_t> uint64FromString(std::string_view str, int base = 10);
-            GEODE_DLL Result<int64_t> int64FromString(std::string_view str, int base = 10);
+            decltype(Unknown) m_value = Unknown;
+
+            constexpr NumParseError() = default;
+            constexpr NumParseError(decltype(Unknown) value) : m_value(value) {}
+            constexpr NumParseError& operator=(decltype(Unknown) value) {
+                m_value = value;
+                return *this;
+            }
+            constexpr decltype(Unknown) value() const {
+                return m_value;
+            }
+
+            GEODE_DLL std::string toString() const;
+            operator std::string() const {
+                return this->toString();
+            }
+        };
+
+        inline std::string format_as(NumParseError const& err) {
+            return err.toString();
+        }
+
+        inline std::ostream& operator<<(std::ostream& os, NumParseError const& err) {
+            return os << err.toString();
+        }
+
+        namespace _detail {
+            GEODE_DLL Result<long double, NumParseError> longDoubleFromString(std::string_view str);
+            GEODE_DLL Result<double, NumParseError> doubleFromString(std::string_view str);
+            GEODE_DLL Result<float, NumParseError> floatFromString(std::string_view str);
+
+            GEODE_DLL Result<uint64_t, NumParseError> uint64FromString(std::string_view str, int base = 10);
+            GEODE_DLL Result<int64_t, NumParseError> int64FromString(std::string_view str, int base = 10);
 
             template <typename T, typename Y>
-            Result<T> narrow(Y num) {
+            Result<T, NumParseError> narrow(Y num) {
                 if (num < static_cast<Y>(std::numeric_limits<T>::min()) ||
                     num > static_cast<Y>(std::numeric_limits<T>::max())) {
-                    return Err("Number is out of range for target type");
+                    return Err(NumParseError::OutOfRange);
                 }
                 return Ok(static_cast<T>(num));
             }
@@ -195,7 +263,7 @@ namespace geode {
          * @returns String as number, or Err if the string couldn't be converted
          */
         template <class Num>
-        Result<Num> numFromString(std::string_view str, int base = 10) {
+        Result<Num, NumParseError> numFromString(std::string_view str, int base = 10) {
             if constexpr (std::is_same_v<Num, float>) {
                 return _detail::floatFromString(str);
             } else if constexpr (std::is_same_v<Num, double>) {
@@ -332,17 +400,10 @@ namespace geode::utils::game {
      * Restarts the game, optionally saving the game data.
      *
      * @param saveData Whether to save the game data
-     */
-    GEODE_DLL void restart(bool saveData /* = true */);
-
-    /**
-     * Restarts the game, optionally saving the game data.
-     *
-     * @param saveData Whether to save the game data
      * @param safeMode Whether to restart in safe mode
 
      */
-    GEODE_DLL void restart(bool saveData /* = true */, bool safeMode /* = false */);
+    GEODE_DLL void restart(bool saveData /* = true */, bool safeMode = false);
 
     /**
      * Launches the loader uninstaller, optionally deleting saved data.

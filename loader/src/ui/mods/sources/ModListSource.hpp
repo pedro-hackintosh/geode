@@ -75,8 +75,8 @@ public:
     void search(std::string query);
     virtual bool isDefaultQuery() const = 0;
 
-    virtual std::unordered_set<std::string> getModTags() const = 0;
-    virtual void setModTags(std::unordered_set<std::string> const& tags) = 0;
+    virtual StringSet getModTags() const = 0;
+    virtual void setModTags(StringSet const& tags) = 0;
 
     // Load page, uses cache if possible unless `forceUpdate` is true
     ProviderTask loadPage(size_t page, bool forceUpdate = false);
@@ -122,14 +122,14 @@ enum class InstalledModListType {
 };
 struct InstalledModsQuery final {
     std::optional<std::string> query;
-    std::unordered_set<std::string> tags = {};
+    StringSet tags;
     size_t page = 0;
     size_t pageSize = 10;
     InstalledModListType type = InstalledModListType::All;
     InstalledModListSort sort = InstalledModListSort::Alphabetical;
     std::optional<bool> enabledOnly;
     std::optional<bool> enabledFirst;
-    
+
     void filter(ModListSource::ProvidedMods& mods);
     bool preCheck(ModSource const& src) const;
     bool queryCheck(ModSource const& src, double& weighted) const;
@@ -152,8 +152,8 @@ protected:
 public:
     static InstalledModListSource* get(InstalledModListType type);
 
-    std::unordered_set<std::string> getModTags() const override;
-    void setModTags(std::unordered_set<std::string> const& tags) override;
+    StringSet getModTags() const override;
+    void setModTags(StringSet const& tags) override;
 
     std::vector<std::pair<size_t, std::string>> getSortingOptions() override;
     size_t getSort() const override;
@@ -188,8 +188,8 @@ protected:
 public:
     static ServerModListSource* get(ServerModListType type);
 
-    std::unordered_set<std::string> getModTags() const override;
-    void setModTags(std::unordered_set<std::string> const& tags) override;
+    StringSet getModTags() const override;
+    void setModTags(StringSet const& tags) override;
 
     std::vector<std::pair<size_t, std::string>> getSortingOptions() override;
     size_t getSort() const override;
@@ -215,8 +215,8 @@ protected:
 public:
     static ModPackListSource* get();
 
-    std::unordered_set<std::string> getModTags() const override;
-    void setModTags(std::unordered_set<std::string> const& tags) override;
+    StringSet getModTags() const override;
+    void setModTags(StringSet const& tags) override;
     bool isDefaultQuery() const override;
 
     bool isLocalModsOnly() const override;

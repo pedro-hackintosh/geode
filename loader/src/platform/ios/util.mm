@@ -16,6 +16,8 @@ using namespace geode::prelude;
 #include <Geode/binding/AppDelegate.hpp>
 #include <Geode/binding/MenuLayer.hpp>
 #include <Geode/binding/FLAlertLayer.hpp>
+#include <Geode/cocos/actions/CCActionManager.h>
+#include <Geode/cocos/platform/ios/CCEGLView.h>
 #include <Geode/Utils.hpp>
 #include <mach-o/utils.h>
 #include <objc/runtime.h>
@@ -28,11 +30,20 @@ using namespace geode::prelude;
 using geode::utils::permission::Permission;
 
 bool utils::clipboard::write(ZStringView data) {
-    [UIPasteboard generalPasteboard].string = [NSString stringWithUTF8String:data.c_str()];
+    NSString* str = [[NSString alloc] initWithBytes:data.data()
+                                              length:data.size()
+                                            encoding:NSUTF8StringEncoding];
+    if (!str) return false;
+    [UIPasteboard generalPasteboard].string = str;
     return true;
 }
+
 std::string utils::clipboard::read() {
-    return std::string([[UIPasteboard generalPasteboard].string UTF8String]);
+    NSString* str = [UIPasteboard generalPasteboard].string;
+    if (!str) return "";
+    NSData* data = [str dataUsingEncoding:NSUTF8StringEncoding];
+    if (!data) return "";
+    return std::string(static_cast<const char*>(data.bytes), data.length);
 }
 
 void utils::web::openLinkUnsafe(ZStringView url) {
@@ -104,7 +115,7 @@ UIViewController* getCurrentViewController() {
     return rootViewController;
 }
 
-bool utils::file::openFolder(std::filesystem::path const& path) {
+bool utils::file::openFolder(asp::fs::PathView path) {
     std::string newPath = fmt::format("{}://{}", getenv("GEODEINJECT_LOADED") ? "filza" : "shareddocuments", path);
     NSURL *url = [NSURL URLWithString:[NSString stringWithUTF8String:newPath.c_str()]];
     if ([[UIApplication sharedApplication] canOpenURL:url]) {
@@ -130,14 +141,14 @@ GEODE_DLL arc::Future<file::PickResult> file::pick(file::PickMode mode, file::Fi
         }
 
         NSURL *FileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"temp.file"]];
-        if (options.defaultPath && !options.defaultPath->parent_path().empty()) {
+        if (options.defaultPath && options.defaultPath->parent()) {
             FileURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:options.defaultPath->c_str()]];
         }
         else if (options.defaultPath) {
             auto FileExtension = [NSString stringWithUTF8String:options.defaultPath->c_str()];
             FileURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:FileExtension]];
         }
-        
+
         // just for the picker not to crash, it gotta have a file to "save" then the writing is handled in the mod once we save the file somewhere
         [@"" writeToURL:FileURL atomically:NO encoding:NSUTF8StringEncoding error:nil];
 
@@ -169,7 +180,7 @@ GEODE_DLL arc::Future<file::PickResult> file::pick(file::PickMode mode, file::Fi
         PickerDelegate_instance = [[PickerDelegate alloc] initWithCompletion:^(NSArray<NSURL*>* urls) {
             PickerDelegate_instance = nil;
 
-            std::vector<std::filesystem::path> paths;
+            std::vector<asp::fs::Path> paths;
             if (urls && urls.count > 0) {
                 for (NSURL* url : urls) {
                     if (url && url.path) {
@@ -236,7 +247,7 @@ GEODE_DLL arc::Future<file::PickManyResult> file::pickMany(file::FilePickOptions
             PickerDelegate_instance = nil;
 
             if (urls && urls.count > 0) {
-                std::vector<std::filesystem::path> paths;
+                std::vector<asp::fs::Path> paths;
                 if (urls && urls.count > 0) {
                     for (NSURL* url : urls) {
                         if (url && url.path) {
@@ -246,7 +257,7 @@ GEODE_DLL arc::Future<file::PickManyResult> file::pickMany(file::FilePickOptions
                 }
                 (void)sender.send(Ok(std::move(paths)));
             } else {
-                (void)sender.send(Ok(std::vector<std::filesystem::path>()));
+                (void)sender.send(Ok(std::vector<asp::fs::Path>()));
             }
         }];
 
@@ -302,11 +313,12 @@ void geode::utils::game::exit(bool save) {
     ), CCDirector::get()->getRunningScene(), false);
 }
 
-void geode::utils::game::restart(bool save) {
-    if (save) {
+void geode::utils::game::restart(bool saveData, bool safeMode) {
+    if (saveData) {
         AppDelegate::get()->trySaveGame(true);
     }
 
+    // TODO: someone clean this up to have safeMode as pSelector as I cannot think rn
     class Exit : public CCObject {
         public:
         void shutdown() {
@@ -323,62 +335,82 @@ void geode::utils::game::restart(bool save) {
                  )->show();
             }
         }
+        void shutdownSafe() {
+            NSURL* url = [NSURL URLWithString:@"geode://relaunch?safeMode=1"];
+            if ([[UIApplication sharedApplication] canOpenURL:url]) {
+                GameEvent(GameEventType::Exiting).send();
+                [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+            } else {
+                // this would only happen if you don't have the launcher
+                FLAlertLayer::create(
+                     "Unavailable",
+                     "Restarting is currently <cr>unavailable</c>. Please <cy>restart the game</c> manually.",
+                     "OK"
+                 )->show();
+            }
+        }
     };
 
-    CCDirector::get()->getActionManager()->addAction(CCSequence::create(
-        CCDelayTime::create(0.5f),
-        CCCallFunc::create(nullptr, callfunc_selector(Exit::shutdown)),
-        nullptr
-    ), CCDirector::get()->getRunningScene(), false);
+    if (safeMode) {
+        CCDirector::get()->getActionManager()->addAction(CCSequence::create(
+            CCDelayTime::create(0.5f),
+            CCCallFunc::create(nullptr, callfunc_selector(Exit::shutdownSafe)),
+            nullptr
+        ), CCDirector::get()->getRunningScene(), false);
+    } else {
+        CCDirector::get()->getActionManager()->addAction(CCSequence::create(
+            CCDelayTime::create(0.5f),
+            CCCallFunc::create(nullptr, callfunc_selector(Exit::shutdown)),
+            nullptr
+        ), CCDirector::get()->getRunningScene(), false);
+    }
 }
 
 void geode::utils::game::launchLoaderUninstaller(bool deleteSaveData) {
     log::error("Launching Geode uninstaller is not supported on iOS");
 }
 
-CCPoint cocos::getMousePos() {
-    return CCPoint(0, 0);
-}
+void cocos::setMousePos(cocos2d::CCPoint const& pos) {}
 
 namespace {
     std::string s_savedBaseDir = "";
 
-    std::filesystem::path getBaseDir() {
+    asp::fs::Path getBaseDir() {
         if (!s_savedBaseDir.empty()) {
-            return std::filesystem::path(s_savedBaseDir);
+            return asp::fs::Path(s_savedBaseDir);
         }
 
         NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         NSString *documentsDirectory = [paths firstObject];
 
-        std::filesystem::path documentsPath = [documentsDirectory UTF8String];
+        asp::fs::Path documentsPath = [documentsDirectory UTF8String];
 
-        s_savedBaseDir = documentsPath;
-        return std::filesystem::path(documentsPath);
+        s_savedBaseDir = documentsPath.string();
+        return asp::fs::Path(documentsPath);
     }
 }
 
-std::filesystem::path dirs::getGameDir() {
+asp::fs::Path dirs::getGameDir() {
     return getBaseDir() / "game";
 }
 
-std::filesystem::path dirs::getModRuntimeDir() {
-    return dirs::getGeodeDir() / "unzipped";
-}
-
-std::filesystem::path dirs::getSaveDir() {
+asp::fs::Path dirs::getSaveDir() {
     return getBaseDir() / "save";
 }
 
-std::filesystem::path dirs::getResourcesDir() {
+asp::fs::Path dirs::getGeodeInternalDir() {
+    return dirs::getGeodeDir();
+}
+
+asp::fs::Path dirs::getResourcesDir() {
     return [[[NSBundle mainBundle] resourcePath] UTF8String];
 }
 
 bool geode::utils::permission::getPermissionStatus(Permission permission) {
     switch (permission) {
-        case Permission::RecordAudio: 
+        case Permission::RecordAudio:
             return [[AVAudioSession sharedInstance] recordPermission] == AVAudioSessionRecordPermissionGranted;
-        default: 
+        default:
             return false;
     }
 }
@@ -398,10 +430,22 @@ void geode::utils::permission::requestPermission(Permission permission, geode::F
 
 #include "../../utils/thread.hpp"
 
+static std::optional<std::string> getNameFromOs() {
+    char buf[64];
+    int result = pthread_getname_np(pthread_self(), buf, sizeof(buf));
+    if (result != 0 || buf[0] == '\0') return std::nullopt;
+
+    return buf;
+}
+
 std::string geode::utils::thread::getDefaultName() {
+    // try to request name from the OS first, fallback to a simple format if fails
+    if (auto name = getNameFromOs()) {
+        return *name;
+    }
+
     uint64_t tid = 0ul;
     pthread_threadid_np(nullptr, &tid);
-
     return fmt::format("Thread #{}", tid);
 }
 
@@ -469,7 +513,7 @@ cocos2d::CCRect geode::utils::getSafeAreaRect() {
             0, 0,
             winSize.width, winSize.height
         );
-    
+
     auto scaleX = glView->m_fScaleX;
     auto scaleY = glView->m_fScaleY;
 
@@ -580,7 +624,8 @@ bool geode::utils::platform::isWine() {
 }
 
 const char* getCurrentArch() {
-    if (@available(iOS 16.0, *)) {
+    NSOperatingSystemVersion version = {16, 0, 0};
+    if ([[NSProcessInfo processInfo] isOperatingSystemAtLeastVersion:version]) {
         return macho_arch_name_for_mach_header(nullptr);
     } else {
         return "arm64";
@@ -600,14 +645,14 @@ PlatformDetails geode::utils::platform::getDetails() {
     bool isPatchless = geode::Loader::get()->isPatchless();
     std::string launchMethod = "Unknown";
     if (getenv("GAME")) {
-        if (getenv("TXM_JIT")) {
-            launchMethod = "JIT [TXM]";
-        } else {
-            if (!isPatchless) {
-                launchMethod = "JIT";
+        if (!isPatchless) {
+            if (getenv("TXM_JIT")) {
+                launchMethod = "JIT [TXM]";
             } else {
-                launchMethod = "JIT-Less";
+                launchMethod = "JIT";
             }
+        } else {
+            launchMethod = "JIT-Less";
         }
     } else {
         if (isPatchless) {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cocos2d.h>
+#include <Geode/ui/Label.hpp>
 #include <Geode/utils/function.hpp>
 
 namespace geode {
@@ -16,18 +16,10 @@ namespace geode {
         AllLower,
     };
 
-    // enum only as these are flags
-    enum TextStyle {
-        TextStyleRegular = 0b0,
-        TextStyleBold = 0b1,
-        TextStyleItalic = 0b10,
-    };
-
-    // enum only as these are flags
-    enum TextDecoration {
-        TextDecorationNone = 0b0,
-        TextDecorationUnderline = 0b1,
-        TextDecorationStrikethrough = 0b10,
+    enum TextStyle : uint8_t {
+        TextStyleRegular = 0,
+        TextStyleBold    = 1 << 0,
+        TextStyleItalic  = 1 << 1,
     };
 
     class TextDecorationWrapper;
@@ -83,7 +75,7 @@ namespace geode {
              * Line height. If 0, the renderer will dynamically
              * calculate line height based on content size.
              */
-            float m_lineHeight;
+            float m_lineHeight = 0.f;
 
             explicit inline Label() {
                 m_node = nullptr;
@@ -115,6 +107,8 @@ namespace geode {
                     if constexpr (std::is_same_v<cocos2d::CCLabelBMFont, T>) {
                         m_lineHeight = label->getConfiguration()->m_nCommonHeight /
                             cocos2d::CC_CONTENT_SCALE_FACTOR();
+                    } else if constexpr (std::is_same_v<geode::Label, T>) {
+                        m_lineHeight = label->getFont()->getCommonHeightScaled();
                     }
                 }
             }

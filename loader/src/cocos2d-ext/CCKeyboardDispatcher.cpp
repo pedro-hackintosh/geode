@@ -1,4 +1,3 @@
-#include <cocos2d.h>
 #include <Geode/utils/cocos.hpp>
 
 using namespace cocos2d;
@@ -6,31 +5,31 @@ using namespace cocos2d;
 #ifdef GEODE_IS_IOS
 
 CCKeyboardDispatcher::CCKeyboardDispatcher()
-    : m_bUnknown38(false),
-    m_bUnknown39(false),
-    m_bUnknown3a(false),
+    : m_bLocked(false),
+    m_bToAdd(false),
+    m_bToRemove(false),
     m_bShiftPressed(false),
     m_bControlPressed(false),
     m_bAltPressed(false),
     m_bCommandPressed(false),
     m_bBlockRepeat(false),
-    m_pDelegates(CCArray::create()),
-    m_pUnknown3c(ccCArrayNew(8)),
-    m_pUnknown40(ccCArrayNew(8))
+    m_pHandlers(CCArray::create()),
+    m_pHandlersToAdd(ccCArrayNew(8)),
+    m_pHandlersToRemove(ccCArrayNew(8))
 {
-    m_pDelegates->retain();
+    m_pHandlers->retain();
 }
 
 CCKeyboardDispatcher::~CCKeyboardDispatcher()
 {
-    CC_SAFE_RELEASE(m_pDelegates);
-    if (m_pUnknown3c)
+    CC_SAFE_RELEASE(m_pHandlers);
+    if (m_pHandlersToAdd)
     {
-        ccCArrayFree(m_pUnknown3c);
+        ccCArrayFree(m_pHandlersToAdd);
     }
-    if (m_pUnknown40)
+    if (m_pHandlersToRemove)
     {
-        ccCArrayFree(m_pUnknown40);
+        ccCArrayFree(m_pHandlersToRemove);
     }
 }
 
@@ -38,10 +37,10 @@ void CCKeyboardDispatcher::addDelegate(CCKeyboardDelegate* pDelegate)
 {
     if (!pDelegate) return;
 
-    if (m_bUnknown38)
+    if (m_bLocked)
     {
-        ccCArrayAppendValue(m_pUnknown3c, pDelegate);
-        m_bUnknown39 = true;
+        ccCArrayAppendValue(m_pHandlersToAdd, pDelegate);
+        m_bToAdd = true;
     }
     else
     {
@@ -53,10 +52,10 @@ void CCKeyboardDispatcher::removeDelegate(CCKeyboardDelegate* pDelegate)
 {
     if (!pDelegate) return;
 
-    if (m_bUnknown38)
+    if (m_bLocked)
     {
-        ccCArrayAppendValue(m_pUnknown40, pDelegate);
-        m_bUnknown3a = true;
+        ccCArrayAppendValue(m_pHandlersToRemove, pDelegate);
+        m_bToRemove = true;
     }
     else
     {
@@ -68,7 +67,7 @@ void CCKeyboardDispatcher::forceAddDelegate(CCKeyboardDelegate* pDelegate)
 {
     if (auto handler = CCKeyboardHandler::handlerWithDelegate(pDelegate))
     {
-        m_pDelegates->addObject(handler);
+        m_pHandlers->addObject(handler);
     }
 }
 
@@ -76,9 +75,9 @@ void CCKeyboardDispatcher::forceRemoveDelegate(CCKeyboardDelegate* pDelegate)
 {
     if (!pDelegate) return;
 
-    for (auto handler : geode::cocos::CCArrayExt<CCKeyboardHandler>(m_pDelegates)) {
+    for (auto handler : geode::cocos::CCArrayExt<CCKeyboardHandler>(m_pHandlers)) {
         if (pDelegate == handler->getDelegate()) {
-            m_pDelegates->removeObject(handler, true);
+            m_pHandlers->removeObject(handler, true);
         }
     }
 }
@@ -121,9 +120,9 @@ bool CCKeyboardDispatcher::dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown,
             break;
     }
 
-    m_bUnknown38 = true;
+    m_bLocked = true;
 
-    for (auto handler : geode::cocos::CCArrayExt<CCKeyboardHandler>(m_pDelegates))
+    for (auto handler : geode::cocos::CCArrayExt<CCKeyboardHandler>(m_pHandlers))
     {
         auto delegate = handler->getDelegate();
         if (isKeyDown)
@@ -136,31 +135,31 @@ bool CCKeyboardDispatcher::dispatchKeyboardMSG(enumKeyCodes key, bool isKeyDown,
         }
         break;
     }
-    m_bUnknown38 = false;
+    m_bLocked = false;
 
-    if (m_bUnknown3a)
+    if (m_bToRemove)
     {
-        m_bUnknown3a = false;
+        m_bToRemove = false;
 
         void* delegate;
-        CCARRAYDATA_FOREACH(m_pUnknown40, delegate)
+        CCARRAYDATA_FOREACH(m_pHandlersToRemove, delegate)
         {
             forceRemoveDelegate(static_cast<CCKeyboardDelegate*>(delegate));
         }
-        ccCArrayRemoveAllValues(m_pUnknown40);
+        ccCArrayRemoveAllValues(m_pHandlersToRemove);
     }
 
-    if (!m_bUnknown39)
+    if (!m_bToAdd)
         return true;
 
-    m_bUnknown39 = false;
+    m_bToAdd = false;
 
     void* delegate;
-    CCARRAYDATA_FOREACH(m_pUnknown3c, delegate)
+    CCARRAYDATA_FOREACH(m_pHandlersToAdd, delegate)
     {
         forceAddDelegate(static_cast<CCKeyboardDelegate*>(delegate));
     }
-    ccCArrayRemoveAllValues(m_pUnknown3c);
+    ccCArrayRemoveAllValues(m_pHandlersToAdd);
 
     return true;
 }
@@ -301,19 +300,13 @@ const char* CCKeyboardDispatcher::keyToString(enumKeyCodes key)
         case KEY_SelectMedia: return "SelectMedia";
         case KEY_LaunchApp1: return "LaunchApp1";
         case KEY_LaunchApp2: return "LaunchApp2";
-        case KEY_OEM1: return "OEM1";
-        case KEY_OEMPlus: return "OEMPlus";
+        // OEM1-7, OEMPlus and OEM102 are named by the geode aliases below
         case KEY_OEMComma: return "OEMComma";
         case KEY_OEMMinus: return "OEMMinus";
         case KEY_OEMPeriod: return "OEMPeriod";
-        case KEY_OEM2: return "OEM2";
-        case KEY_OEM3: return "OEM3";
-        case KEY_OEM4: return "OEM4";
-        case KEY_OEM5: return "OEM5";
-        case KEY_OEM6: return "OEM6";
-        case KEY_OEM7: return "OEM7";
+        case KEY_ABNT1: return "ABNT1";
+        case KEY_ABNT2: return "ABNT2";
         case KEY_OEM8: return "OEM8";
-        case KEY_OEM102: return "OEM102";
         case KEY_Process: return "Process";
         case KEY_Packet: return "Packet";
         case KEY_Attn: return "Attn";
@@ -329,30 +322,52 @@ const char* CCKeyboardDispatcher::keyToString(enumKeyCodes key)
         case KEY_ArrowLeft: return "ArrowLeft";
         case KEY_ArrowRight: return "ArrowRight";
         case CONTROLLER_A: return "Controller_A";
+        case CONTROLLER2_A: return "Controller2_A";
         case CONTROLLER_B: return "Controller_B";
+        case CONTROLLER2_B: return "Controller2_B";
         case CONTROLLER_Y: return "Controller_Y";
+        case CONTROLLER2_Y: return "Controller2_Y";
         case CONTROLLER_X: return "Controller_X";
+        case CONTROLLER2_X: return "Controller2_X";
         case CONTROLLER_Start: return "Controller_Start";
+        case CONTROLLER2_Start: return "Controller2_Start";
         case CONTROLLER_Back: return "Controller_Back";
+        case CONTROLLER2_Back: return "Controller2_Back";
         case CONTROLLER_RB: return "Controller_RB";
+        case CONTROLLER2_RB: return "Controller2_RB";
         case CONTROLLER_LB: return "Controller_LB";
+        case CONTROLLER2_LB: return "Controller2_LB";
         case CONTROLLER_RT: return "Controller_RT";
+        case CONTROLLER2_RT: return "Controller2_RT";
         case CONTROLLER_LT: return "Controller_LT";
+        case CONTROLLER2_LT: return "Controller2_LT";
         case CONTROLLER_Up: return "Controller_Up";
+        case CONTROLLER2_Up: return "Controller2_Up";
         case CONTROLLER_Down: return "Controller_Down";
+        case CONTROLLER2_Down: return "Controller2_Down";
         case CONTROLLER_Left: return "Controller_Left";
+        case CONTROLLER2_Left: return "Controller2_Left";
         case CONTROLLER_Right: return "Controller_Right";
+        case CONTROLLER2_Right: return "Controller2_Right";
 
         // Geode Additions
 
         case CONTROLLER_LTHUMBSTICK_UP: return "Controller_LTHUMBSTICK_UP";
+        case CONTROLLER2_LTHUMBSTICK_UP: return "Controller2_LTHUMBSTICK_UP";
         case CONTROLLER_LTHUMBSTICK_DOWN: return "Controller_LTHUMBSTICK_DOWN";
+        case CONTROLLER2_LTHUMBSTICK_DOWN: return "Controller2_LTHUMBSTICK_DOWN";
         case CONTROLLER_LTHUMBSTICK_LEFT: return "Controller_LTHUMBSTICK_LEFT";
+        case CONTROLLER2_LTHUMBSTICK_LEFT: return "Controller2_LTHUMBSTICK_LEFT";
         case CONTROLLER_LTHUMBSTICK_RIGHT: return "Controller_LTHUMBSTICK_RIGHT";
+        case CONTROLLER2_LTHUMBSTICK_RIGHT: return "Controller2_LTHUMBSTICK_RIGHT";
         case CONTROLLER_RTHUMBSTICK_UP: return "Controller_RTHUMBSTICK_UP";
+        case CONTROLLER2_RTHUMBSTICK_UP: return "Controller2_RTHUMBSTICK_UP";
         case CONTROLLER_RTHUMBSTICK_DOWN: return "Controller_RTHUMBSTICK_DOWN";
+        case CONTROLLER2_RTHUMBSTICK_DOWN: return "Controller2_RTHUMBSTICK_DOWN";
         case CONTROLLER_RTHUMBSTICK_LEFT: return "Controller_RTHUMBSTICK_LEFT";
+        case CONTROLLER2_RTHUMBSTICK_LEFT: return "Controller2_RTHUMBSTICK_LEFT";
         case CONTROLLER_RTHUMBSTICK_RIGHT: return "Controller_RTHUMBSTICK_RIGHT";
+        case CONTROLLER2_RTHUMBSTICK_RIGHT: return "Controller2_RTHUMBSTICK_RIGHT";
         case KEY_GraveAccent: return "`";
         case KEY_OEMEqual: return "=";
         case KEY_LeftBracket: return "[";
@@ -361,7 +376,8 @@ const char* CCKeyboardDispatcher::keyToString(enumKeyCodes key)
         case KEY_Semicolon: return ";";
         case KEY_Apostrophe: return "'";
         case KEY_Slash: return "/";
-        case KEY_NumEnter: return "=";
+        case KEY_Equal: return "NumEqual";
+        case KEY_NumEnter: return "NumEnter";
         case KEY_World1: return "INTL-1";
         case KEY_World2: return "INTL-2";
         case MOUSE_4: return "Mouse 4";
@@ -369,6 +385,10 @@ const char* CCKeyboardDispatcher::keyToString(enumKeyCodes key)
         case MOUSE_6: return "Mouse 6";
         case MOUSE_7: return "Mouse 7";
         case MOUSE_8: return "Mouse 8";
+        case CONTROLLER_L3: return "Controller_L3";
+        case CONTROLLER2_L3: return "Controller2_L3";
+        case CONTROLLER_R3: return "Controller_R3";
+        case CONTROLLER2_R3: return "Controller2_R3";
 
         case KEY_None:
         case KEY_Unknown:

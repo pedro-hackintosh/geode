@@ -6,18 +6,19 @@
 #include <Geode/loader/Dirs.hpp>
 #include <Geode/loader/Loader.hpp>
 #include <Geode/loader/Mod.hpp>
-#include <DbgHelp.h>
 #include <Geode/utils/casts.hpp>
 #include <Geode/utils/file.hpp>
 #include <Geode/utils/terminate.hpp>
 #include <Windows.h>
+#include <DbgHelp.h>
 #include <ctime>
 #include <errhandlingapi.h>
 #include <iomanip>
 #include <iostream>
 #include <string>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include "ehdata_structs.hpp"
+#include <asp/fs/fs.hpp>
 
 #include <tlhelp32.h>
 
@@ -28,7 +29,7 @@ static bool g_lastLaunchCrashed = false;
 static bool g_symbolsInitialized = false;
 static std::wstring g_unzippedSearchPaths;
 static crashlog::CrashContext g_context;
-static LPEXCEPTION_POINTERS g_excPtr;
+static thread_local LPEXCEPTION_POINTERS g_excPtr;
 
 PVOID GeodeFunctionTableAccess64(HANDLE hProcess, DWORD64 AddrBase);
 
@@ -147,6 +148,18 @@ static std::string findSymbolNameFromRVA(HMODULE module, DWORD rva) {
     return {};
 }
 
+// TODO: temporary workaround due to wine 11.x having a bug in dbghelp causing it to crash inside SymFromAddr
+static BOOL safeSymFromAddr(HANDLE hProcess, DWORD64 Address, PDWORD64 Displacement, PSYMBOL_INFO Symbol) {
+    BOOL result = false;
+    __try {
+        result = SymFromAddr(hProcess, Address, Displacement, Symbol);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        log::warn("SymFromAddr crashed with exception {:x} on address {:x}", GetExceptionCode(), Address);
+        result = false;
+    }
+    return result;
+}
+
 static StackFrame getFrame(void const* addr, bool fullPath = true) {
     HMODULE module = nullptr;
     auto proc = GetCurrentProcess();
@@ -177,10 +190,11 @@ static StackFrame getFrame(void const* addr, bool fullPath = true) {
         symbolInfo->SizeOfStruct = sizeof(SYMBOL_INFO);
         symbolInfo->MaxNameLen = MAX_SYM_NAME;
 
-        if (SymFromAddr(
-                proc, static_cast<DWORD64>(reinterpret_cast<uintptr_t>(addr)), &displacement,
-                symbolInfo
-            )) {
+        auto result = safeSymFromAddr(
+            proc, static_cast<DWORD64>(reinterpret_cast<uintptr_t>(addr)), &displacement,
+            symbolInfo
+        );
+        if (result) {
             if (auto entry = SymFunctionTableAccess64(proc, static_cast<DWORD64>(reinterpret_cast<uintptr_t>(addr)))) {
                 auto moduleBase = SymGetModuleBase64(proc, static_cast<DWORD64>(reinterpret_cast<uintptr_t>(addr)));
                 auto runtimeFunction = static_cast<PRUNTIME_FUNCTION>(entry);
@@ -354,8 +368,8 @@ std::vector<Register> CrashContext::getRegisters() {
     return registers;
 }
 
-std::string_view CrashContext::getGeodeBinaryName() {
-    return "Geomoded.dll";
+asp::fs::PathView CrashContext::getGeodeBinaryName() {
+    return "Geode.dll";
 }
 
 static HMODULE handleFromAddress(void const* addr) {
@@ -542,7 +556,7 @@ void CrashContext::writeInfo(Buffer& stream) {
 
 static void handleException(LPEXCEPTION_POINTERS info) {
     std::string text;
-    std::filesystem::path crashlogPath;
+    asp::fs::Path crashlogPath;
     g_excPtr = info;
 
     // calling SymInitialize from multiple threads can have unexpected behavior, so synchronize this part
@@ -578,7 +592,7 @@ static void handleException(LPEXCEPTION_POINTERS info) {
     }
 
     // defined in crashlogWindow.cpp
-    extern bool showCustomCrashlogWindow(std::string text, std::filesystem::path const& crashlogPath);
+    extern bool showCustomCrashlogWindow(std::string text, asp::fs::PathView crashlogPath);
 
     if (!showCustomCrashlogWindow(text, crashlogPath)) {
         // if the window fails to show, we show a message box instead
@@ -593,14 +607,57 @@ static LONG WINAPI exceptionHandler(LPEXCEPTION_POINTERS info) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+static void abortHandler(int sig) {
+    CONTEXT ctx{};
+    RtlCaptureContext(&ctx);
+
+    EXCEPTION_RECORD rec{};
+    rec.ExceptionCode = GEODE_ABORTED_EXCEPTION_CODE;
+    rec.ExceptionAddress = reinterpret_cast<void*>(ctx.Rip);
+    rec.NumberParameters = 2;
+    rec.ExceptionInformation[0] = reinterpret_cast<ULONG_PTR>("Program has been aborted, due to a call to abort(), assertion failure, or other fatal error.");
+    rec.ExceptionInformation[1] = 0; // Mod*, but we do not have one here
+
+    EXCEPTION_POINTERS ptrs{};
+    ptrs.ContextRecord = &ctx;
+    ptrs.ExceptionRecord = &rec;
+
+    handleException(&ptrs);
+
+    TerminateProcess(GetCurrentProcess(), 1);
+}
+
+static BOOL WINAPI ctrlHandler(DWORD type) {
+    if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT || type == CTRL_CLOSE_EVENT) {
+        TerminateProcess(GetCurrentProcess(), STATUS_CONTROL_C_EXIT);
+    }
+
+    return FALSE;
+}
+
 bool crashlog::setupPlatformHandler() {
     SetUnhandledExceptionFilter(exceptionHandler);
 
+    // some behavior ends up either abort()ing or fastfail()ing, which does not go through seh
+    // install manual handlers for it
+    _set_invalid_parameter_handler([](const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t) {
+        abortHandler(SIGABRT);
+    });
+
+    _set_purecall_handler([] {
+        abortHandler(SIGABRT);
+    });
+
+    signal(SIGABRT, abortHandler);
+    SetConsoleCtrlHandler(ctrlHandler, TRUE);
+
+    // suppress WER and debug msg my masking out both flags
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+
     auto lastCrashedFile = crashlog::getCrashLogDirectory() / "last-crashed";
-    if (std::filesystem::exists(lastCrashedFile)) {
+    if (lastCrashedFile.exists()) {
         g_lastLaunchCrashed = true;
-        std::error_code ec;
-        std::filesystem::remove(lastCrashedFile, ec);
+        (void) asp::fs::remove(lastCrashedFile);
     }
     return true;
 }
@@ -617,6 +674,6 @@ void crashlog::setupPlatformHandlerPost() {
     }
 }
 
-std::filesystem::path crashlog::getCrashLogDirectory() {
+asp::fs::Path crashlog::getCrashLogDirectory() {
     return dirs::getGeodeDir() / "crashlogs";
 }

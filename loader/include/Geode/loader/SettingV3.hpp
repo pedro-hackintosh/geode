@@ -3,8 +3,12 @@
 #include "../DefaultInclude.hpp"
 #include <optional>
 #include <concepts>
-#include <cocos2d.h>
-#include "../utils/cocos.hpp"
+#include <Geode/ui/Label.hpp>
+#include <Geode/ui/Button.hpp>
+#include <Geode/cocos/include/ccTypes.h>
+#include <Geode/cocos/base_nodes/CCNode.h>
+#include <Geode/cocos/layers_scenes_transitions_nodes/CCLayer.h>
+#include <Geode/binding/CCMenuItemSpriteExtra.hpp>
 #include "../utils/file.hpp"
 // this unfortunately has to be included because of C++ templates
 #include "../utils/JsonValidation.hpp"
@@ -298,7 +302,7 @@ namespace geode {
          * setting's value is reset to the default value
          */
         void setValue(V value) {
-            m_impl->value = this->isValid(value) ? value : m_impl->defaultValue;
+            m_impl->value = this->isValid(value) ? T{value} : T{m_impl->defaultValue};
             this->markChanged();
         }
         /**
@@ -497,7 +501,7 @@ namespace geode {
         SettingNodeV3* createNode(float width) override;
     };
 
-    class GEODE_DLL FileSettingV3 final : public SettingBaseValueV3<std::filesystem::path, std::filesystem::path const&> {
+    class GEODE_DLL FileSettingV3 final : public SettingBaseValueV3<asp::fs::Path, asp::fs::PathView> {
     private:
         class Impl;
         std::shared_ptr<Impl> m_impl;
@@ -510,7 +514,7 @@ namespace geode {
         FileSettingV3(PrivateMarker);
         static Result<std::shared_ptr<FileSettingV3>> parse(std::string key, std::string modID, matjson::Value const& json);
 
-        Result<> isValid(std::filesystem::path const& value) const override;
+        Result<> isValid(asp::fs::PathView value) const override;
 
         bool isFolder() const;
         bool useSaveDialog() const;
@@ -610,23 +614,6 @@ namespace geode {
     protected:
         bool init(std::shared_ptr<SettingV3> setting, float width);
 
-        // todo in v6: make updateState public
-        /**
-         * Update the state of this setting node, bringing all inputs
-         * up-to-date with the current value. Derivatives of `SettingNodeV3`
-         * should set update the state (such as visibility, value, etc.) of all
-         * its controls, except for the one that's passed as the `invoker`
-         * argument. Derivatives should remember to **always call the base
-         * class's `updateState` function**, as it updates the built-in title
-         * label as well as the description and reset buttons!
-         * @param invoker The button or other interactive element that caused
-         * this state update. If that element is for example a text input, it
-         * may wish to ignore the state update, as it itself is the source of
-         * truth for the node's value at that moment. May be nullptr to mark
-         * that no specific node requested this state update
-         */
-        virtual void updateState(cocos2d::CCNode* invoker);
-
         /**
          * Mark this setting as changed. This updates the UI for committing
          * the value, as well as posts a `SettingNodeValueChangeEventV3`
@@ -651,24 +638,32 @@ namespace geode {
         virtual bool hasUncommittedChanges() const = 0;
         virtual bool hasNonDefaultValue() const = 0;
 
-        // This is extremely silly and will be removed in v6 in favour of just
-        // making `updateState` itself be public
-        // todo in v6: make updateState public and remove this
-        void updateState2(cocos2d::CCNode* invoker);
+        /**
+         * Update the state of this setting node, bringing all inputs
+         * up-to-date with the current value. Derivatives of `SettingNodeV3`
+         * should set update the state (such as visibility, value, etc.) of all
+         * its controls, except for the one that's passed as the `invoker`
+         * argument. Derivatives should remember to **always call the base
+         * class's `updateState` function**, as it updates the built-in title
+         * label as well as the description and reset buttons!
+         * @param invoker The button or other interactive element that caused
+         * this state update. If that element is for example a text input, it
+         * may wish to ignore the state update, as it itself is the source of
+         * truth for the node's value at that moment. May be nullptr to mark
+         * that no specific node requested this state update
+         */
+        virtual void updateState(cocos2d::CCNode* invoker);
 
         // Can be overridden by the setting itself
         // Can / should be used to do alternating BG
         void setDefaultBGColor(cocos2d::ccColor4B color);
 
-        cocos2d::CCLabelBMFont* getNameLabel() const;
-        CCMenuItemSpriteExtra* getDescriptionButton() const;
-        cocos2d::CCLabelBMFont* getStatusLabel() const;
-        cocos2d::CCMenu* getNameMenu() const;
-        cocos2d::CCMenu* getButtonMenu() const;
+        geode::Label* getNameLabel() const;
+        geode::Button* getDescriptionButton() const;
+        geode::Label* getStatusLabel() const;
+        cocos2d::CCNode* getNameMenu() const;
+        cocos2d::CCNode* getButtonMenu() const;
         cocos2d::CCLayerColor* getBG() const;
-
-        // Useful if you're programmatically creating setting nodes
-        void overrideDescription(std::optional<ZStringView> description);
 
         void setContentSize(cocos2d::CCSize const& size) override;
 
@@ -706,7 +701,7 @@ namespace geode {
             auto validate = this->getSetting()->isValid(m_impl->currentValue);
             if (!validate) {
                 this->getStatusLabel()->setVisible(true);
-                this->getStatusLabel()->setString(validate.unwrapErr().c_str());
+                this->getStatusLabel()->setText(validate.unwrapErr());
                 this->getStatusLabel()->setColor(cocos2d::ccc3(235, 35, 52));
             }
         }
@@ -750,7 +745,7 @@ namespace geode {
         }
     };
 
-    class SettingChangedEventV3 final : public GlobalEvent<SettingChangedEventV3, bool(std::string_view, std::string_view, std::shared_ptr<SettingV3>), bool(std::shared_ptr<SettingV3>), std::string, std::string> {
+    class SettingChangedEventV3 final : public GlobalEvent<SettingChangedEventV3, bool(std::string_view modID, std::string_view settingKey, std::shared_ptr<SettingV3> setting), bool(std::shared_ptr<SettingV3> setting), void(std::string modID, std::string settingKey)> {
     public:
         // listener params setting
         // filter params modID, settingKey
@@ -758,7 +753,7 @@ namespace geode {
         GEODE_DLL SettingChangedEventV3(Mod* mod, std::string settingKey);
     };
 
-    class KeybindSettingPressedEventV3 final : public GlobalEvent<KeybindSettingPressedEventV3, bool(std::string_view, std::string_view, Keybind const&, bool, bool, double), bool(Keybind const&, bool, bool, double), std::string, std::string> {
+    class KeybindSettingPressedEventV3 final : public GlobalEvent<KeybindSettingPressedEventV3, bool(std::string_view modID, std::string_view settingKey, Keybind const& keybind, bool down, bool repeat, double timestamp), bool(Keybind const& keybind, bool down, bool repeat, double timestamp), void(std::string modID, std::string settingKey)> {
     public:
         // listener params keybind, down, repeat, timestamp
         // filter params modID, settingKey
@@ -766,15 +761,15 @@ namespace geode {
         GEODE_DLL KeybindSettingPressedEventV3(Mod* mod, std::string settingKey);
     };
 
-    class ButtonSettingPressedEventV3 final : public GlobalEvent<ButtonSettingPressedEventV3, bool(std::string_view, std::string_view, std::string_view), bool(std::string_view), std::string, std::string> {
+    class ButtonSettingPressedEventV3 final : public GlobalEvent<ButtonSettingPressedEventV3, bool(std::string_view modID, std::string_view settingKey, std::string_view buttonKey), bool(std::string_view buttonKey), void(std::string modID, std::string settingKey)> {
     public:
+        // listener params buttonKey
         // filter params modID, settingKey
-        // filter params buttonKey
         using GlobalEvent::GlobalEvent;
         GEODE_DLL ButtonSettingPressedEventV3(Mod* mod, std::string settingKey);
     };
 
-    class SettingNodeSizeChangeEventV3 final : public GlobalEvent<SettingNodeSizeChangeEventV3, bool(std::string_view, std::string_view, SettingNodeV3*), bool(SettingNodeV3*), std::string, std::string> {
+    class SettingNodeSizeChangeEventV3 final : public GlobalEvent<SettingNodeSizeChangeEventV3, bool(std::string_view modID, std::string_view settingKey, SettingNodeV3* node), bool(SettingNodeV3* node), void(std::string modID, std::string settingKey)> {
     public:
         // listener params node
         // filter params modID, settingKey
@@ -782,7 +777,7 @@ namespace geode {
         GEODE_DLL SettingNodeSizeChangeEventV3(Mod* mod, std::string settingKey);
     };
 
-    class SettingNodeValueChangeEventV3 final : public GlobalEvent<SettingNodeValueChangeEventV3, bool(std::string_view, std::string_view, SettingNodeV3*, bool), bool(SettingNodeV3*, bool), std::string, std::string> {
+    class SettingNodeValueChangeEventV3 final : public GlobalEvent<SettingNodeValueChangeEventV3, bool(std::string_view modID, std::string_view settingKey, SettingNodeV3* node, bool isCommit), bool(SettingNodeV3* node, bool isCommit), void(std::string modID, std::string settingKey)> {
     public:
         // listener params node, isCommit
         // filter params modID, settingKey
@@ -819,7 +814,7 @@ namespace geode {
         using SettingType = StringSettingV3;
     };
     template <>
-    struct SettingTypeForValueType<std::filesystem::path> {
+    struct SettingTypeForValueType<asp::fs::Path> {
         using SettingType = FileSettingV3;
     };
     template <>
@@ -846,14 +841,14 @@ namespace geode {
         using Ty = typename SettingTypeForValueType<T>::SettingType;
         using Ret = utils::function::Return<decltype(callback)>;
         if constexpr (std::is_same_v<Ret, void>) {
-            return SettingChangedEventV3(mod, std::move(settingKey)).listen([callback = std::move(callback)](std::shared_ptr<SettingV3> setting) {
+            return SettingChangedEventV3(mod, std::move(settingKey)).listen([callback = std::forward<Callback>(callback)](std::shared_ptr<SettingV3> setting) {
                 if (auto ty = geode::cast::typeinfo_pointer_cast<Ty>(setting)) {
                     return callback(ty->getValue());
                 }
             }).leak();
         }
         else {
-            return SettingChangedEventV3(mod, std::move(settingKey)).listen([callback = std::move(callback)](std::shared_ptr<SettingV3> setting) {
+            return SettingChangedEventV3(mod, std::move(settingKey)).listen([callback = std::forward<Callback>(callback)](std::shared_ptr<SettingV3> setting) {
                 if (auto ty = geode::cast::typeinfo_pointer_cast<Ty>(setting)) {
                     return callback(ty->getValue());
                 }
@@ -867,7 +862,7 @@ namespace geode {
     template <class Callback>
     requires std::is_invocable_v<Callback, std::string_view, std::shared_ptr<SettingV3>>
     ListenerHandle* listenForAllSettingChanges(Callback&& callback, Mod* mod = getMod()) {
-        return SettingChangedEventV3().listen([callback = std::move(callback), mod = std::move(mod)](std::string_view modID, std::string_view key, std::shared_ptr<SettingV3> setting) {
+        return SettingChangedEventV3().listen([callback = std::forward<Callback>(callback), mod = std::move(mod)](std::string_view modID, std::string_view key, std::shared_ptr<SettingV3> setting) {
             if (mod && getModID(mod) != modID) {
                 return;
             }
@@ -878,13 +873,13 @@ namespace geode {
     template <class Callback>
     requires std::is_invocable_v<Callback, Keybind const&, bool, bool, double>
     ListenerHandle* listenForKeybindSettingPresses(std::string settingKey, Callback&& callback, Mod* mod = getMod()) {
-        return KeybindSettingPressedEventV3(mod, std::move(settingKey)).listen(std::move(callback)).leak();
+        return KeybindSettingPressedEventV3(mod, std::move(settingKey)).listen(std::forward<Callback>(callback)).leak();
     }
 
     template <class Callback>
     requires std::is_invocable_v<Callback, std::string_view, Keybind const&, bool, bool, double>
     ListenerHandle* listenForAllKeybindSettingPresses(Callback&& callback, Mod* mod = getMod()) {
-        return KeybindSettingPressedEventV3().listen([callback = std::move(callback), mod = std::move(mod)](std::string_view modID, std::string_view key, Keybind const& keybind, bool down, bool repeat, double timestamp) {
+        return KeybindSettingPressedEventV3().listen([callback = std::forward<Callback>(callback), mod = std::move(mod)](std::string_view modID, std::string_view key, Keybind const& keybind, bool down, bool repeat, double timestamp) {
             if (mod && getModID(mod) != modID) {
                 return;
             }

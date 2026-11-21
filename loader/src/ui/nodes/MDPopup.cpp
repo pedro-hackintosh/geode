@@ -34,11 +34,11 @@ bool MDPopup::init(
         m_size.height - 100.f,
     };
 
-    auto content = MDTextArea::create(info, contentSize, compatibilityMode);
+    auto content = MDTextArea::create(info, contentSize);
     m_mainLayer->addChildAtPosition(content, Anchor::Center, ccp(0, 0));
 
     this->setTitle(title, "goldFont.fnt", .9f, 28.f);
-    m_title->limitLabelWidth(contentSize.width - 4.f, .9f, .1f);
+    m_title->setLimitLabelWidth(contentSize.width - 4.f, .9f, .1f);
 
     auto btnSpr = ButtonSprite::create(btn1Text.c_str());
 

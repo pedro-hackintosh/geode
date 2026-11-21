@@ -3,6 +3,7 @@
 #include <loader/ModImpl.hpp>
 #include <loader/LoaderImpl.hpp>
 #include <Geode/utils/string.hpp>
+#include <Windows.h>
 #include <processenv.h>
 
 using namespace geode::prelude;
@@ -21,7 +22,7 @@ std::string Loader::Impl::getGameVersion() {
 }
 
 bool Loader::Impl::userTriedToLoadDLLs() const {
-    static std::unordered_set<std::string> KNOWN_MOD_DLLS {
+    static StringSet KNOWN_MOD_DLLS {
         "betteredit-v4.0.5.dll",
         "betteredit-v4.0.5-min.dll",
         "betteredit-v4.0.3.dll",
@@ -69,8 +70,8 @@ bool Loader::Impl::userTriedToLoadDLLs() const {
         for (auto i = 0; i < (needed / sizeof(HMODULE)); i++) {
             std::array<wchar_t, MAX_PATH> modName;
             if (GetModuleFileNameExW(process, mods[i], modName.data(), modName.size())) {
-                auto u8name = utils::string::pathToString(std::filesystem::path(modName.data()).filename());
-                if (KNOWN_MOD_DLLS.count(string::trim(string::toLower(u8name)))) {
+                auto u8name = asp::fs::Path::fromWide(modName.data()).filename().value_or("");
+                if (KNOWN_MOD_DLLS.count(string::trim(string::toLower(std::string{u8name})))) {
                     triedToLoadDLLs = true;
                 }
             }
@@ -78,15 +79,6 @@ bool Loader::Impl::userTriedToLoadDLLs() const {
     }
 
     return triedToLoadDLLs;
-}
-
-void Loader::Impl::addNativeBinariesPath(std::filesystem::path const& path) {
-    // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-adddlldirectory#remarks
-    static auto runOnce = [] {
-        SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-        return 0;
-    }();
-    AddDllDirectory(path.c_str());
 }
 
 bool Loader::Impl::supportsLaunchArguments() const {

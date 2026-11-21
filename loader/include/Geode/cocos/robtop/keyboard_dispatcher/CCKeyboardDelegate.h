@@ -150,12 +150,15 @@ typedef enum
     KEY_LaunchApp1 = 0xB6,
     KEY_LaunchApp2 = 0xB7,
     KEY_OEM1 = 0xBA,
-    KEY_OEMPlus = 0xB8,
+    KEY_OEMPlus = 0xBB,
     KEY_OEMComma = 0xBC,
     KEY_OEMMinus = 0xBD,
     KEY_OEMPeriod = 0xBE,
     KEY_OEM2 = 0xBF,
     KEY_OEM3 = 0xC0,
+    // Brazilian ABNT2 keyboards (VK_ABNT_C1 / VK_ABNT_C2)
+    KEY_ABNT1 = 0xC1,
+    KEY_ABNT2 = 0xC2,
     KEY_OEM4 = 0xDB,
     KEY_OEM5 = 0xDC,
     KEY_OEM6 = 0xDD,
@@ -177,41 +180,69 @@ typedef enum
     KEY_ArrowLeft = 0x11D,
     KEY_ArrowRight = 0x11E,
     CONTROLLER_A = 0x3E9,
+    CONTROLLER2_A = 0x3EA,
     CONTROLLER_B = 0x3EB,
+    CONTROLLER2_B = 0x3EC,
     CONTROLLER_Y = 0x3ED,
+    CONTROLLER2_Y = 0x3EE,
     CONTROLLER_X = 0x3EF,
+    CONTROLLER2_X = 0x3F0,
     CONTROLLER_Start = 0x3F1,
+    CONTROLLER2_Start = 0x3F2,
     CONTROLLER_Back = 0x3F3,
+    CONTROLLER2_Back = 0x3F4,
     CONTROLLER_RB = 0x3F5,
+    CONTROLLER2_RB = 0x3F6,
     CONTROLLER_LB = 0x3F7,
+    CONTROLLER2_LB = 0x3F8,
     CONTROLLER_RT = 0x3F9,
+    CONTROLLER2_RT = 0x3FA,
     CONTROLLER_LT = 0x3FB,
+    CONTROLLER2_LT = 0x3FC,
     CONTROLLER_Up = 0x3FD,
+    CONTROLLER2_Up = 0x3FE,
     CONTROLLER_Down = 0x3FF,
+    CONTROLLER2_Down = 0x400,
     CONTROLLER_Left = 0x401,
+    CONTROLLER2_Left = 0x402,
     CONTROLLER_Right = 0x403,
+    CONTROLLER2_Right = 0x404,
     CONTROLLER_LTHUMBSTICK_UP = 0x405,
+    CONTROLLER2_LTHUMBSTICK_UP = 0x406,
     CONTROLLER_LTHUMBSTICK_DOWN = 0x407,
+    CONTROLLER2_LTHUMBSTICK_DOWN = 0x408,
     CONTROLLER_LTHUMBSTICK_LEFT = 0x409,
+    CONTROLLER2_LTHUMBSTICK_LEFT = 0x40A,
     CONTROLLER_LTHUMBSTICK_RIGHT = 0x40B,
+    CONTROLLER2_LTHUMBSTICK_RIGHT = 0x40C,
     CONTROLLER_RTHUMBSTICK_UP = 0x40D,
+    CONTROLLER2_RTHUMBSTICK_UP = 0x40E,
     CONTROLLER_RTHUMBSTICK_DOWN = 0x40F,
+    CONTROLLER2_RTHUMBSTICK_DOWN = 0x410,
     CONTROLLER_RTHUMBSTICK_LEFT = 0x411,
+    CONTROLLER2_RTHUMBSTICK_LEFT = 0x412,
     CONTROLLER_RTHUMBSTICK_RIGHT = 0x413,
+    CONTROLLER2_RTHUMBSTICK_RIGHT = 0x414,
 
     // Geode additions
-    KEY_GraveAccent = 0x1000,
-    KEY_OEMEqual = 0x1001,
-    KEY_LeftBracket = 0x1002,
-    KEY_RightBracket = 0x1003,
-    KEY_Backslash = 0x1004,
-    KEY_Semicolon = 0x1005,
-    KEY_Apostrophe = 0x1006,
-    KEY_Slash = 0x1007,
+    // Readable aliases for the native OEM codes (US layout names).
+    // These used to be separate codes in GD < 2.208 (0x1000+),
+    // but GD binds and labels use the native ones
+    KEY_GraveAccent = KEY_OEM3,
+    KEY_OEMEqual = KEY_OEMPlus,
+    KEY_LeftBracket = KEY_OEM4,
+    KEY_RightBracket = KEY_OEM6,
+    KEY_Backslash = KEY_OEM5,
+    KEY_Semicolon = KEY_OEM1,
+    KEY_Apostrophe = KEY_OEM7,
+    KEY_Slash = KEY_OEM2,
+    // Keys used by some non-US keyboard layouts
+    KEY_World1 = KEY_OEM102,
+
+    // Keys with no native code
+    // Numpad equals (the main = key is KEY_OEMEqual)
     KEY_Equal = 0x1008,
     KEY_NumEnter = 0x1009,
-    // Keys used by some non-US keyboard layouts
-    KEY_World1 = 0x100A,
     KEY_World2 = 0x100B,
 
     // Mouse buttons (excluding clicks)
@@ -219,7 +250,13 @@ typedef enum
     MOUSE_5 = 0x1101,
     MOUSE_6 = 0x1102,
     MOUSE_7 = 0x1103,
-    MOUSE_8 = 0x1104
+    MOUSE_8 = 0x1104,
+
+    // Extra controller keys
+    CONTROLLER_L3 = 0x1201,
+    CONTROLLER2_L3 = 0x1202,
+    CONTROLLER_R3 = 0x1203,
+    CONTROLLER2_R3 = 0x1204
 } enumKeyCodes;
 
 // @note RobTop Addition
@@ -230,7 +267,7 @@ public:
 
     virtual void keyUp(enumKeyCodes key, double) {}
 
-    //pretty certain there's no fields, based on initializer
+    virtual bool handleAction(int, bool, double) { return false; }
 };
 
 // @note RobTop Addition
@@ -251,6 +288,9 @@ public:
     virtual bool initWithDelegate(CCKeyboardDelegate* pDelegate);
 
     void setDelegate(CCKeyboardDelegate* pDelegate);
+
+    // TODO unsure about position
+    // virtual bool handleAction(int, bool, double);
 
 public:
     CCKeyboardDelegate* m_pDelegate;

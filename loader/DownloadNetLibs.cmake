@@ -1,21 +1,21 @@
 if (GEODE_TARGET_PLATFORM STREQUAL "iOS")
 	set(net_libs_plat "ios")
-	set(net_libs_hash "SHA256=1065ef2adc191a82de3f1d69826c29f8b1526accb092bde37966a5467606962c")
+	set(net_libs_hash "SHA256=1f04d932067c1d75d2284e226acfb3b89a962915e4e976263d02ddb931b37dd4")
 elseif (GEODE_TARGET_PLATFORM STREQUAL "MacOS")
 	set(net_libs_plat "macos")
-	set(net_libs_hash "SHA256=c91a60646b8b0b4d879edf1230006d430de72b84d8feee8151cbd9136241898e")
+	set(net_libs_hash "SHA256=d814f317abfa95b583f1d37120e686d8cb2a089a511e1372dcdd7e462936bf09")
 elseif (GEODE_TARGET_PLATFORM STREQUAL "Win64")
 	set(net_libs_plat "windows")
-	set(net_libs_hash "SHA256=478170d63fe6850e032e1e2de51ad744fa595aac40da5df65afe9996313bccb7")
+	set(net_libs_hash "SHA256=60ca9a0970fb5ebde78b68d20ef8817c927281422f3448ef35defccf30988a87")
 elseif (GEODE_TARGET_PLATFORM STREQUAL "Android32")
 	set(net_libs_plat "android32")
-	set(net_libs_hash "SHA256=e113ffeab4bfcbc193977ae695b87e63cc8c1062dd20270321798e45ff2d350c")
+	set(net_libs_hash "SHA256=263d4a01e30523b5373ad156626359e28874fbee87ff08f18338186c5821a376")
 elseif (GEODE_TARGET_PLATFORM STREQUAL "Android64")
 	set(net_libs_plat "android64")
-	set(net_libs_hash "SHA256=9ace6335c077d42e4bc4510feea35212d628dab54a4df49b6792d6ee8aa81909")
+	set(net_libs_hash "SHA256=8546de2a9c3f0208e8e024fba60812e92d1fc1f23d1904b7ac1d3cc78953238b")
 endif()
 
-set(net_libs_version "8.19.0-9")
+set(net_libs_version "8.22.0-1")
 CPMAddPackage(
 	NAME net_libs_bin
 	VERSION "${net_libs_version}_${net_libs_plat}"
@@ -53,13 +53,41 @@ else()
 	)
 endif()
 
-CPMAddPackage("gh:geode-sdk/net_libs#b5b810c")
+CPMAddPackage("gh:geode-sdk/net_libs@${net_libs_version}")
 target_link_libraries(${PROJECT_NAME} ca-bundle)
 
 if (WIN32)
 	set(ZLIB_LIBRARY "${net_libs_bin_SOURCE_DIR}/zs.lib")
+	set(ZSTD_LIBRARY "${net_libs_bin_SOURCE_DIR}/zstd_static.lib")
 else()
 	set(ZLIB_LIBRARY "${net_libs_bin_SOURCE_DIR}/libz.a")
+	set(ZSTD_LIBRARY "${net_libs_bin_SOURCE_DIR}/libzstd.a")
 endif()
 
 set(ZLIB_INCLUDE_DIR "${net_libs_bin_SOURCE_DIR}/include")
+set(ZSTD_INCLUDE_DIR "${net_libs_bin_SOURCE_DIR}/include")
+
+# libraries needed for minizip
+if (NOT TARGET zstd::libzstd_static)
+	add_library(zstd::libzstd_static STATIC IMPORTED)
+    set_target_properties(zstd::libzstd_static PROPERTIES
+        IMPORTED_LOCATION "${ZSTD_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${ZSTD_INCLUDE_DIR}"
+    )
+
+	if (NOT TARGET zstd::libzstd_shared)
+		add_library(zstd::libzstd_shared ALIAS zstd::libzstd_static)
+	endif()
+	if (NOT TARGET zstd::libzstd)
+		add_library(zstd::libzstd ALIAS zstd::libzstd_static)
+	endif()
+	set(ZSTD_FOUND TRUE CACHE BOOL "" FORCE)
+endif()
+if (NOT TARGET ZLIB::ZLIB)
+    add_library(ZLIB::ZLIB STATIC IMPORTED)
+    set_target_properties(ZLIB::ZLIB PROPERTIES
+        IMPORTED_LOCATION "${ZLIB_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${ZLIB_INCLUDE_DIR}"
+    )
+	set(ZLIB_FOUND TRUE CACHE BOOL "" FORCE)
+endif()

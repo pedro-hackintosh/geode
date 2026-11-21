@@ -14,13 +14,15 @@ namespace geode::utils {
 #ifdef GEODE_IS_WINDOWS
     static constexpr size_t GEODE_TERMINATE_EXCEPTION_CODE   = 0x4000;
     static constexpr size_t GEODE_UNREACHABLE_EXCEPTION_CODE = 0x4001;
+    static constexpr size_t GEODE_ABORTED_EXCEPTION_CODE = 0x4002;
 
     static constexpr bool isGeodeExceptionCode(size_t code) {
-        return GEODE_TERMINATE_EXCEPTION_CODE <= code && code <= GEODE_UNREACHABLE_EXCEPTION_CODE;
+        return GEODE_TERMINATE_EXCEPTION_CODE <= code && code <= GEODE_ABORTED_EXCEPTION_CODE;
     }
 #else
     static constexpr size_t GEODE_TERMINATE_EXCEPTION_CODE = 0;
     static constexpr size_t GEODE_UNREACHABLE_EXCEPTION_CODE = 0;
+    static constexpr size_t GEODE_ABORTED_EXCEPTION_CODE = 0;
 
     static constexpr bool isGeodeExceptionCode(size_t code) {
         return false;
@@ -30,6 +32,9 @@ namespace geode::utils {
     namespace detail {
         // This needs to do stuff with `Mod*` which is not included in the file
         GEODE_DLL void logTerminationError(const char* reason, Mod* mod);
+        #ifdef GEODE_IS_WINDOWS
+        GEODE_DLL void handleDebuggerException(ZStringView reason, Mod* mod, size_t platformCode);
+        #endif
     }
 
     template <class = void>
@@ -39,20 +44,7 @@ namespace geode::utils {
         detail::logTerminationError(reason.c_str(), mod);
 
     #ifdef GEODE_IS_WINDOWS
-        // If a debugger is attached, start debugging
-        if (IsDebuggerPresent()) {
-            OutputDebugStringW(utils::string::utf8ToWide(reason).c_str());
-            DebugBreak();
-        }
-        // Otherwise terminate by raising an exception (which is caught by the crashlog handler)
-        else {
-            std::array<const void*, 2> errorList { reason.c_str(), mod };
-            RaiseException(
-                platformCode,
-                EXCEPTION_NONCONTINUABLE,
-                2, reinterpret_cast<ULONG_PTR*>(errorList.data())
-            );
-        }
+        detail::handleDebuggerException(reason, mod, platformCode);
     #endif
 
         std::terminate();

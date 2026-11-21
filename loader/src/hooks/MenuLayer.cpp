@@ -1,12 +1,13 @@
 #include "../ui/mods/ModsLayer.hpp"
 #include <Geode/loader/GameEvent.hpp>
 #include <Geode/modify/MenuLayer.hpp>
-#include <Geode/modify/Modify.hpp>
 #include <Geode/modify/IDManager.hpp>
 #include <Geode/utils/NodeIDs.hpp>
 #include <Geode/ui/BasedButtonSprite.hpp>
 #include <Geode/ui/Notification.hpp>
+#include <Geode/ui/Label.hpp>
 #include <Geode/ui/Popup.hpp>
+#include <Geode/ui/PopupManager.hpp>
 #include <Geode/ui/MDPopup.hpp>
 #include <Geode/utils/cocos.hpp>
 #include <Geode/utils/web.hpp>
@@ -20,6 +21,17 @@
 using namespace geode::prelude;
 
 #pragma warning(disable : 4217)
+
+std::string geode::modifier::ModifyError::toString() const {
+    switch (m_value) {
+        case Unknown:
+            return "Unknown error";
+        case HookNotFound:
+            return "Hook not found";
+        case ModNotFound:
+            return "Mod not found";
+    }
+}
 
 static size_t FOUND_MOD_UPDATES = 0;
 static size_t FOUND_MOD_DEPRECATIONS = 0;
@@ -37,7 +49,7 @@ struct CustomMenuLayer : Modify<CustomMenuLayer, MenuLayer> {
 
     struct Fields {
         bool m_menuDisabled = false;
-        CCNode* m_geodeButton = nullptr;
+        Ref<CCNode> m_geodeButton = nullptr;
         async::TaskHolder<Result<InstalledModsUpdateCheck, server::ServerError>> m_updateCheckTask;
     };
 
@@ -143,24 +155,22 @@ struct CustomMenuLayer : Modify<CustomMenuLayer, MenuLayer> {
         // show in safe mode
         auto isSafeMode = LoaderImpl::get()->isSafeMode();
         if (isSafeMode) {
-            Loader::get()->queueInMainThread([] {
-                auto popup = createQuickPopup(
-                    "Safe Mode",
-                    "Geode is running in <cy>Safe Mode</c>.\n"
-                    "Mods are <cr>not loaded</c> in this mode.\n"
-                    "\n"
-                    "You can use this to <co>disable</c> or <co>update</c> mods "
-                    "causing issues but all mod features\n"
-                    "<cy>are not available</c>.",
-                    "OK",
-                    nullptr,
-                    [](auto, bool btn2) {},
-                    false
-                );
+            auto popup = PopupManager::get().quickPopup(
+                "Safe Mode",
+                "Geode is running in <cy>Safe Mode</c>.\n"
+                "Mods are <cr>not loaded</c> in this mode.\n"
+                "\n"
+                "You can use this to <co>disable</c> or <co>update</c> mods "
+                "causing issues but all mod features\n"
+                "<cy>are not available</c>.",
+                "OK",
+                nullptr,
+                [](auto, bool btn2) {},
+                false
+            );
 
-                popup->m_noElasticity = true;
-                popup->show();
-            });
+            popup->m_noElasticity = true;
+            popup.showQueue();
         }
 
         // show if the user tried to be naughty and load arbitrary DLLs
@@ -243,7 +253,7 @@ struct CustomMenuLayer : Modify<CustomMenuLayer, MenuLayer> {
 
             m_fields->m_updateCheckTask.spawn(ModsLayer::checkInstalledModsForUpdates(), [this](auto result) {
                 if (result.isOk()) {
-                    auto updatesFound = result.unwrap();
+                    auto& updatesFound = result.unwrap();
                     if (updatesFound.modsWithUpdates.size() || updatesFound.modsWithDeprecations.size()) {
                         if (updatesFound.modsWithUpdates.size()) {
                             log::info(
@@ -303,7 +313,7 @@ struct CustomMenuLayer : Modify<CustomMenuLayer, MenuLayer> {
             icon->setScale(.65f);
 
             if (count > 0) {
-                auto countLabel = CCLabelBMFont::create(std::to_string(count).c_str(), "bigFont.fnt");
+                auto countLabel = Label::create(std::to_string(count), "bigFont.fnt");
                 countLabel->setScale(.5f);
                 icon->addChildAtPosition(countLabel, Anchor::Center);
             }
@@ -347,35 +357,35 @@ struct CustomMenuLayer : Modify<CustomMenuLayer, MenuLayer> {
         auto socialMenu = static_cast<CCMenu*>(this->getChildByID("social-media-menu"));
         socialMenu->ignoreAnchorPointForPosition(false);
         socialMenu->setAnchorPoint({0.0f, 0.0f});
-        socialMenu->setPosition({13.f, 13.f});
+        socialMenu->setPosition({10.f, 13.75f});
 
         auto robtopButton = static_cast<CCMenuItemSpriteExtra*>(socialMenu->getChildByID("robtop-logo-button"));
         robtopButton->setPosition(robtopButton->getScaledContentSize() / 2);
 
-        float horizontalGap = 3.5f;
-        float verticalGap = 5.0f;
+        float horizontalGap = 3.6f;
+        float verticalGap = 6.25f;
         auto facebookButton = static_cast<CCMenuItemSpriteExtra*>(socialMenu->getChildByID("facebook-button"));
         facebookButton->setPosition({
-            facebookButton->getScaledContentSize().width / 2,
+            (facebookButton->getScaledContentSize().width / 2) - 0.6f,
             robtopButton->getScaledContentSize().height + verticalGap + facebookButton->getScaledContentSize().height / 2
         });
 
         auto twitterButton = static_cast<CCMenuItemSpriteExtra*>(socialMenu->getChildByID("twitter-button"));
         twitterButton->setPosition({
-            facebookButton->getScaledContentSize().width + horizontalGap + twitterButton->getScaledContentSize().width / 2,
-            robtopButton->getScaledContentSize().height + verticalGap + twitterButton->getScaledContentSize().height / 2
+            facebookButton->getPositionX() + facebookButton->getScaledContentSize().width / 2 + horizontalGap + twitterButton->getScaledContentSize().width / 2,
+            robtopButton->getScaledContentSize().height + verticalGap + facebookButton->getScaledContentSize().height / 2
         });
 
         auto youtubeButton = static_cast<CCMenuItemSpriteExtra*>(socialMenu->getChildByID("youtube-button"));
         youtubeButton->setPosition({
             twitterButton->getPositionX() + twitterButton->getScaledContentSize().width / 2 + horizontalGap + youtubeButton->getScaledContentSize().width / 2,
-            robtopButton->getScaledContentSize().height + verticalGap + youtubeButton->getScaledContentSize().height / 2
+            robtopButton->getScaledContentSize().height + verticalGap + facebookButton->getScaledContentSize().height / 2
         });
 
         auto twitchButton = static_cast<CCMenuItemSpriteExtra*>(socialMenu->getChildByID("twitch-button"));
         twitchButton->setPosition({
             youtubeButton->getPositionX() + youtubeButton->getScaledContentSize().width / 2 + horizontalGap + twitchButton->getScaledContentSize().width / 2,
-            robtopButton->getScaledContentSize().height + verticalGap + twitchButton->getScaledContentSize().height / 2
+            robtopButton->getScaledContentSize().height + verticalGap + facebookButton->getScaledContentSize().height / 2
         });
 
         auto discordButton = static_cast<CCMenuItemSpriteExtra*>(socialMenu->getChildByID("discord-button"));

@@ -75,6 +75,28 @@ if (DEFINED ENV{GEODE_BINDINGS_REPO_PATH})
 	string(REPLACE "\\" "/" GEODE_BINDINGS_REPO_PATH ${temp})
 endif()
 
+if (GEODE_BINDINGS_REPO_PATH)
+  file(GLOB GEODE_BINDINGS_CONTENTS "${GEODE_BINDINGS_REPO_PATH}/*")
+  list(LENGTH GEODE_BINDINGS_CONTENTS GEODE_BINDINGS_COUNT)
+
+  if(GEODE_BINDINGS_COUNT EQUAL 0)
+    set(GEODE_BINDINGS_REPO_PATH "")
+  endif()
+
+  if (EXISTS "${GEODE_BINDINGS_REPO_PATH}/.pull-latest-promise")
+    find_package(Git)
+    if (Git_FOUND)
+      message(DEBUG "Found pull promise, updating bindings to latest")
+      execute_process(
+        COMMAND ${GIT_EXECUTABLE} pull
+        WORKING_DIRECTORY "${GEODE_BINDINGS_REPO_PATH}"
+        ERROR_QUIET
+      )
+      file(REMOVE "${GEODE_BINDINGS_REPO_PATH}/.pull-latest-promise")
+    endif()
+  endif()
+endif()
+
 if (NOT GEODE_BINDINGS_REPO_PATH)
 	message(STATUS
 		"No override path for bindings provided, using CPM to clone default. "
@@ -195,20 +217,21 @@ set(GEODE_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 
 include(cmake/Platform.cmake)
 include(cmake/GeodeFile.cmake)
+include(cmake/AIAgentDetection.cmake)
 
 # there is now a script that runs over these lines to determine the gd version
 # so please update them when you set the game version
 
 # begin GEODE_GD_VERSION
-# win:     2.2081
-# mac:     2.2081
-# ios:     2.2081
-# android: 2.2081
+# win:     2.2091
+# mac:     2.2091
+# ios:     2.2091
+# android: 2.2091
 # end GEODE_GD_VERSION
 
 if (NOT DEFINED GEODE_GD_VERSION)
-	set(GEODE_GD_VERSION 2.2081 CACHE INTERNAL "Geode GD Version")
-	set(GEODE_COMP_GD_VERSION 22081 CACHE INTERNAL "Geode Comparable GD Version")
+	set(GEODE_GD_VERSION 2.2091 CACHE INTERNAL "Geode GD Version")
+	set(GEODE_COMP_GD_VERSION 22091 CACHE INTERNAL "Geode Comparable GD Version")
 endif()
 
 target_compile_definitions(
@@ -232,6 +255,12 @@ if (WIN32)
 		target_link_options(${PROJECT_NAME} INTERFACE --target=x86_64-pc-windows-msvc)
 		add_compile_options(--target=x86_64-pc-windows-msvc)
 		add_link_options(--target=x86_64-pc-windows-msvc)
+	endif()
+
+	# When building debug/rwdi, lld defaults to 0 code elimination, preserving all functions in the binary
+	# This is very rarely wanted, so force /OPT:REF to eliminate unused functions
+	if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+		target_link_options(${PROJECT_NAME} INTERFACE "-Wl,/OPT:REF")
 	endif()
 endif()
 
@@ -257,18 +286,19 @@ if (ANDROID)
 	endif()
 endif()
 
+CPMAddPackage("gh:geode-sdk/result#1668d22")
 set(MAT_JSON_AS_INTERFACE ON)
-CPMAddPackage("gh:geode-sdk/result@1.4.1")
-CPMAddPackage("gh:geode-sdk/json@3.3.0")
+set(MAT_JSON_BUILD_IMPL ${PROJECT_IS_TOP_LEVEL})
+CPMAddPackage("gh:geode-sdk/json@4.1.0")
 CPMAddPackage("gh:geode-sdk/nontype_functional#6d1d08c")
-CPMAddPackage("gh:fmtlib/fmt#12.1.0")
+CPMAddPackage("gh:fmtlib/fmt#12.2.0")
 
 # allow overriding asp / arc versions
 if (NOT DEFINED GEODE_ARC_VERSION)
-	set(GEODE_ARC_VERSION "@1.5.5" CACHE STRING "")
+	set(GEODE_ARC_VERSION "@1.6.6" CACHE STRING "")
 endif()
 if (NOT DEFINED GEODE_ASP_VERSION)
-	set(GEODE_ASP_VERSION "#51d3773" CACHE STRING "")
+	set(GEODE_ASP_VERSION "@1.6.4" CACHE STRING "")
 endif()
 
 CPMAddPackage("gh:dankmeme01/asp2${GEODE_ASP_VERSION}")
@@ -292,7 +322,7 @@ target_compile_definitions(${PROJECT_NAME} INTERFACE MAT_JSON_DYNAMIC=1)
 # since fmtlib will fail to compile otherwise
 if (GEODE_DISABLE_FMT_CONSTEVAL)
 	message(VERBOSE "Disabling FMT_CONSTEVAL")
-	target_compile_definitions(fmt PUBLIC -DFMT_CONSTEVAL=)
+	target_compile_definitions(fmt::fmt PUBLIC -DFMT_CONSTEVAL=)
 endif()
 
 # throw an error if the compiler is too old, for async we require Clang 19 and MSVC 19.44+
@@ -324,7 +354,7 @@ if (DEFINED GEODE_TULIPHOOK_REPO_PATH)
 	message(STATUS "Using ${GEODE_TULIPHOOK_REPO_PATH} for TulipHook")
 	add_subdirectory(${GEODE_TULIPHOOK_REPO_PATH} ${GEODE_TULIPHOOK_REPO_PATH}/build)
 else()
-	CPMAddPackage("gh:geode-sdk/TulipHook@3.1.11")
+	CPMAddPackage("gh:geode-sdk/TulipHook#fb5e02c")
 endif()
 set(CMAKE_WARN_DEPRECATED ON CACHE BOOL "" FORCE)
 
@@ -337,7 +367,9 @@ if (SUPPORTS_W_NO_EVERYTHING)
 	endif()
 endif()
 
-target_sources(${PROJECT_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/entry.cpp)
+if (NOT GEODE_NO_ENTRY)
+	target_sources(${PROJECT_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/entry.cpp)
+endif()
 
 add_subdirectory(${GEODE_BINDINGS_REPO_PATH} ${CMAKE_BINARY_DIR}/bindings)
 
@@ -363,7 +395,7 @@ else()
 	)
 endif()
 target_link_directories(GeodeBindings PUBLIC ${GEODE_LOADER_PATH}/include/link)
-target_link_libraries(GeodeBindings PUBLIC fmt TulipHookInclude mat-json std23::nontype_functional GeodeResult asp arc)
+target_link_libraries(GeodeBindings PUBLIC fmt::fmt TulipHookInclude mat-json std23::nontype_functional GeodeResult asp arc)
 if (TARGET debase-rt)
   debase_depends(${PROJECT_NAME} GeodeBindings)
 else()

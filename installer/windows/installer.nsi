@@ -4,8 +4,8 @@
     !include WinMessages.nsh
 
 ; settings
-    Name "Geomoded"
-    OutFile "geomoded-installer-win.exe"
+    Name "Geode"
+    OutFile "geode-installer-win.exe"
     Unicode true
     InstallDir "$PROGRAMFILES32\Steam\steamapps\common\Geometry Dash\" ; set default path to the most common one
     XPStyle on
@@ -21,7 +21,10 @@
     !define MUI_FINISHPAGE_NOAUTOCLOSE
     !define MUI_UNFINISHPAGE_NOAUTOCLOSE
     !define MUI_FINISHPAGE_NOREBOOTSUPPORT
-
+    !define MUI_ICON Graphics\logo_inst.ico
+    !define MUI_UNICON Graphics\logo_uninst.ico
+    !define MUI_WELCOMEFINISHPAGE_BITMAP Graphics\banner.bmp
+    !define MUI_UNWELCOMEFINISHPAGE_BITMAP Graphics\banner.bmp
 
 ; pages
     !insertmacro MUI_PAGE_WELCOME
@@ -52,6 +55,7 @@
     !insertmacro GEODE_LANGUAGE "SpanishInternational"
     !insertmacro GEODE_LANGUAGE "Italian"
     !insertmacro GEODE_LANGUAGE "Swedish"
+    !insertmacro GEODE_LANGUAGE "Hungarian"
     !insertmacro GEODE_LANGUAGE "Greek"
     !insertmacro GEODE_LANGUAGE "Finnish"
     !insertmacro GEODE_LANGUAGE "Polish"
@@ -65,6 +69,8 @@
     !insertmacro GEODE_LANGUAGE "SimpChinese"
     !insertmacro GEODE_LANGUAGE "TradChinese"
     !insertmacro GEODE_LANGUAGE "Korean"
+    !insertmacro GEODE_LANGUAGE "Indonesian"
+    !insertmacro GEODE_LANGUAGE "Romanian"
 
     !insertmacro MUI_RESERVEFILE_LANGDLL
 
@@ -413,7 +419,7 @@ Function .onVerifyInstDir
     IfFileExists $INSTDIR\libcrypto-3-x64.dll 0 versionIssueImo
 
     ; check if geode is already installed
-    IfFileExists $INSTDIR\Geomoded.dll valid
+    IfFileExists $INSTDIR\Geode.dll valid
 
     ; check mod loaders/mod menus
     IfFileExists $INSTDIR\hackpro.dll other_hackpro
@@ -452,7 +458,7 @@ Function .onVerifyInstDir
         Return
 FunctionEnd
 
-SectionGroup "Geomoded"
+SectionGroup "Geode"
     Section "Loader" LOADER_SECTION
         check_gd_open:
             nsExec::ExecToStack 'cmd /c tasklist /FI "IMAGENAME eq GeometryDash.exe" | find /I "GeometryDash.exe"'
@@ -463,12 +469,11 @@ SectionGroup "Geomoded"
                 Quit
         continue_install:
 
-SetOutPath $INSTDIR
-File ${BINDIR}\Geomoded.dll
-CopyFiles /SILENT $INSTDIR\Geomoded.dll $INSTDIR\Geode.dll
+        SetOutPath $INSTDIR
 
-File ${BINDIR}\Geomoded.pdb
-        File ${BINDIR}\GeomodedUpdater.exe
+        File ${BINDIR}\Geode.dll
+        File ${BINDIR}\Geode.pdb
+        File ${BINDIR}\GeodeUpdater.exe
         File ${BINDIR}\XInput1_4.dll
 
         RMdir /r $INSTDIR\geode\update
@@ -484,7 +489,7 @@ File ${BINDIR}\Geomoded.pdb
         Delete "$INSTDIR\vcruntime140.dll"
         Delete "$INSTDIR\vcruntime140d.dll"
 
-        WriteUninstaller "GeomodedUninstaller.exe"
+        WriteUninstaller "GeodeUninstaller.exe"
     SectionEnd
 
     Section "Resources"
@@ -542,7 +547,7 @@ Function un.onInit
 
     ; check if xinput and geode exist
     IfFileExists $INSTDIR\XInput1_4.dll 0 invalid
-    IfFileExists $INSTDIR\Geomoded.dll 0 invalid
+    IfFileExists $INSTDIR\Geode.dll 0 invalid
         Return
 
     invalid:
@@ -550,15 +555,12 @@ Function un.onInit
         Abort
 FunctionEnd
 Section "Uninstall"
-    DeleteRegKey /ifempty HKCU "Software\Geomoded"
-    Delete $INSTDIR\GeomodedUninstaller.exe
-Delete $INSTDIR\Geomoded.dll
+    DeleteRegKey /ifempty HKCU "Software\Geode"
+    Delete $INSTDIR\GeodeUninstaller.exe
     Delete $INSTDIR\Geode.dll
-
-    Delete $INSTDIR\Geomoded.pdb
-
-    Delete $INSTDIR\Geomoded.lib
-    Delete $INSTDIR\GeomodedUpdater.exe
+    Delete $INSTDIR\Geode.pdb
+    Delete $INSTDIR\Geode.lib
+    Delete $INSTDIR\GeodeUpdater.exe
     Delete $INSTDIR\XInput1_4.dll
 
     # default value of DATA is an empty string

@@ -1,17 +1,33 @@
+#include <Geode/cocos/cocoa/CCGeometry.h>
+#include <Geode/cocos/robtop/touch_dispatcher/CCTouchClipper.h>
+#include <Geode/cocos/support/CCPointExtension.h>
+#include <Geode/cocos/touch_dispatcher/CCTouchHandler.h>
 #include <Geode/ui/Button.hpp>
+#include <Geode/ui/Label.hpp>
 #include <Geode/utils/cocos.hpp>
+#include <unordered_set>
 
 using namespace geode::prelude;
 
+static bool isInsideClippers(CCNode* node, CCPoint worldPoint) {
+    if (auto clipper = node->getParentByType<CCTouchClipper*>()) {
+        if (!clipper->touchInsideClip(worldPoint)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 class Button::Impl final {
 public:
-    ButtonCallback m_activateCallback = nullptr;
-    ButtonCallback m_selectCallback = nullptr;
-    ButtonCallback m_unselectCallback = nullptr;
-
     bool m_enabled = true;
     bool m_selected = false;
     bool m_defaultsSet = false;
+    bool m_swallow = true;
+    float m_dragCancelDistance = 0.f;
+    CCPoint m_touchStart;
+    bool m_dragTouchCancelled = false;
 
     int m_touchPriority = cocos2d::kCCMenuHandlerPriority;
 
@@ -19,7 +35,7 @@ public:
     float m_touchMultiplier = 1.f;
 
     CCPoint m_offset = {0, -15};
-    
+
     float m_selectedDuration = 0.3f;
     float m_unselectedDuration = 0.4f;
 
@@ -34,6 +50,15 @@ public:
     cocos2d::CCNode* m_displayNode = nullptr;
 
     geode::Ref<cocos2d::CCNodeRGBA> m_defaults = nullptr;
+
+    ButtonCallback m_activateCallback = nullptr;
+    ButtonCallback m_selectedCallback = nullptr;
+    ButtonCallback m_unselectedCallback = nullptr;
+
+    geode::ListenerHandle m_activateListener;
+    geode::ListenerHandle m_selectedListener;
+    geode::ListenerHandle m_unselectedListener;
+
 };
 
 Button::Button() : m_impl(std::make_unique<Impl>()) {}
@@ -62,7 +87,7 @@ Button* Button::createWithNode(CCNode* node, ButtonCallback activateCallback) {
 
 Button* Button::createWithSprite(ZStringView fileName, ButtonCallback activateCallback) {
     auto ret = new Button();
-    if (ret->initWithSprite(std::move(fileName), std::move(activateCallback))) {
+    if (ret->initWithSprite(fileName, std::move(activateCallback))) {
         ret->autorelease();
         return ret;
     }
@@ -72,7 +97,7 @@ Button* Button::createWithSprite(ZStringView fileName, ButtonCallback activateCa
 
 Button* Button::createWithSpriteFrameName(ZStringView frameName, ButtonCallback activateCallback) {
     auto ret = new Button();
-    if (ret->initWithSpriteFrameName(std::move(frameName),std::move(activateCallback))) {
+    if (ret->initWithSpriteFrameName(frameName, std::move(activateCallback))) {
         ret->autorelease();
         return ret;
     }
@@ -80,9 +105,9 @@ Button* Button::createWithSpriteFrameName(ZStringView frameName, ButtonCallback 
     return nullptr;
 }
 
-Button* Button::createWithLabel(ZStringView text, ZStringView font, ButtonCallback activateCallback) {
+Button* Button::createWithLabel(std::string text, ZStringView font, ButtonCallback activateCallback) {
     auto ret = new Button();
-    if (ret->initWithLabel(std::move(text), std::move(font), std::move(activateCallback))) {
+    if (ret->initWithLabel(std::move(text), font, std::move(activateCallback))) {
         ret->autorelease();
         return ret;
     }
@@ -93,7 +118,19 @@ Button* Button::createWithLabel(ZStringView text, ZStringView font, ButtonCallba
 bool Button::init(ButtonCallback activateCallback) {
     if (!CCNodeRGBA::init()) return false;
     m_impl->m_defaults = CCNodeRGBA::create();
+
     m_impl->m_activateCallback = std::move(activateCallback);
+    m_impl->m_activateListener = Button::ClickedEvent(this, Button::ClickType::Activated).listen([this]  {
+        if (m_impl->m_activateCallback) m_impl->m_activateCallback(this);
+    });
+
+    m_impl->m_selectedListener = Button::ClickedEvent(this, Button::ClickType::Selected).listen([this]  {
+        if (m_impl->m_selectedCallback) m_impl->m_selectedCallback(this);
+    });
+
+    m_impl->m_unselectedListener = Button::ClickedEvent(this, Button::ClickType::Unselected).listen([this]  {
+        if (m_impl->m_unselectedCallback) m_impl->m_unselectedCallback(this);
+    });
 
     setCascadeColorEnabled(true);
     setCascadeOpacityEnabled(true);
@@ -140,10 +177,10 @@ bool Button::initWithSpriteFrameName(ZStringView frameName, ButtonCallback activ
     return true;
 }
 
-bool Button::initWithLabel(ZStringView text, ZStringView font, ButtonCallback activateCallback) {
+bool Button::initWithLabel(std::string text, ZStringView font, ButtonCallback activateCallback) {
     if (!Button::init(std::move(activateCallback))) return false;
 
-    m_impl->m_displayNode = CCLabelBMFont::create(text.c_str(), font.c_str());
+    m_impl->m_displayNode = Label::create(std::move(text), font);
     if (!m_impl->m_displayNode) return false;
 
     setContentSize(m_impl->m_displayNode->getScaledContentSize());
@@ -155,6 +192,17 @@ bool Button::initWithLabel(ZStringView text, ZStringView font, ButtonCallback ac
 
 CCNode* Button::getDisplayNode() {
     return m_impl->m_displayNode;
+}
+
+void Button::setDisplayNode(CCNode* node) {
+    m_impl->m_displayNode->removeFromParent();
+
+    m_impl->m_displayNode = node;
+
+    setContentSize(m_impl->m_displayNode->getScaledContentSize());
+    m_impl->m_displayNode->setPosition(getContentSize() * m_impl->m_displayNode->getAnchorPoint());
+
+    addChild(m_impl->m_displayNode);
 }
 
 CCActionInterval* Button::clickActionForType() {
@@ -176,7 +224,7 @@ CCActionInterval* Button::clickActionForType() {
     }
 
     return nullptr;
-}   
+}
 
 CCActionInterval* Button::releaseActionForType() {
     switch (m_impl->m_animationType) {
@@ -195,7 +243,7 @@ CCActionInterval* Button::releaseActionForType() {
             return CCEaseInOut::create(moveTo, 2.f);
         }
     }
-    
+
     return nullptr;
 }
 
@@ -232,8 +280,6 @@ void Button::setDefaults() {
 
     m_impl->m_defaults->setContentSize(getContentSize());
 
-    m_impl->m_defaults->setZOrder(getZOrder());
-
     m_impl->m_defaults->setOpacity(getOpacity());
     m_impl->m_defaults->setColor(getColor());
 }
@@ -261,8 +307,6 @@ void Button::resetDefaults() {
 
     setContentSize(m_impl->m_defaults->getContentSize());
 
-    setZOrder(m_impl->m_defaults->getZOrder());
-
     setOpacity(m_impl->m_defaults->getOpacity());
     setColor(m_impl->m_defaults->getColor());
 }
@@ -283,14 +327,14 @@ void Button::selected() {
         runAction(m_impl->m_activeClickAction);
     }
 
-    if (m_impl->m_selectCallback) m_impl->m_selectCallback(this);
+    Button::ClickedEvent(this, Button::ClickType::Selected).send();
 
     m_impl->m_selected = true;
 }
 
 void Button::unselected() {
     if (!m_impl->m_selected) return;
-    
+
     stopAction(m_impl->m_activeClickAction);
     stopAction(m_impl->m_activeReleaseAction);
 
@@ -300,7 +344,7 @@ void Button::unselected() {
         runAction(m_impl->m_activeReleaseAction);
     }
 
-    if (m_impl->m_unselectCallback) m_impl->m_unselectCallback(this);
+    Button::ClickedEvent(this, Button::ClickType::Unselected).send();
 
     m_impl->m_selected = false;
 }
@@ -311,7 +355,7 @@ void Button::activate() {
 
     resetDefaults();
 
-    if (m_impl->m_activateCallback) m_impl->m_activateCallback(this);
+    Button::ClickedEvent(this, Button::ClickType::Activated).send();
 }
 
 void Button::setScaleMultiplier(float multiplier) {
@@ -323,7 +367,7 @@ float Button::getScaleMultiplier() {
 }
 
 void Button::setMoveOffset(cocos2d::CCPoint const& offset) {
-    m_impl->m_offset = std::move(offset);
+    m_impl->m_offset = offset;
 }
 
 cocos2d::CCPoint Button::getMoveOffset() {
@@ -374,20 +418,39 @@ void Button::onExit() {
 }
 
 bool Button::ccTouchBegan(CCTouch* touch, CCEvent* event) {
-    if (!nodeIsVisible(this)) return false;
+    if (!nodeIsVisible(this) || !m_impl->m_enabled) return false;
 
     if (SharedButtonHandler::containsTouch(this, touch)) {
         SharedButtonHandler::get()->setActiveButton(this);
+
+        m_impl->m_touchStart = touch->getLocation();
+        m_impl->m_dragTouchCancelled = false;
+
         return true;
     }
     return false;
 }
 
 void Button::ccTouchMoved(CCTouch* touch, CCEvent* event) {
+    if (m_impl->m_dragTouchCancelled) {
+        return;
+    }
+
+    if (m_impl->m_dragCancelDistance > 0 &&
+        ccpDistance(touch->getLocation(), m_impl->m_touchStart) > m_impl->m_dragCancelDistance) {
+        m_impl->m_dragTouchCancelled = true;
+        SharedButtonHandler::get()->passCancelledToButtons();
+        return;
+    }
+
     SharedButtonHandler::get()->passMoveToButtons(this, touch);
 }
 
 void Button::ccTouchEnded(CCTouch* touch, CCEvent* event) {
+    if (m_impl->m_dragTouchCancelled) {
+        return;
+    }
+
     SharedButtonHandler::get()->passActivateToButtons();
 }
 
@@ -412,7 +475,7 @@ float Button::getTouchMultiplier() {
 }
 
 void Button::registerWithTouchDispatcher() {
-    CCTouchDispatcher::get()->addTargetedDelegate(this, m_impl->m_touchPriority, true);
+    CCTouchDispatcher::get()->addTargetedDelegate(this, m_impl->m_touchPriority, m_impl->m_swallow);
 }
 
 void Button::setActivateCallback(ButtonCallback callback) {
@@ -420,11 +483,30 @@ void Button::setActivateCallback(ButtonCallback callback) {
 }
 
 void Button::setSelectCallback(ButtonCallback callback) {
-    m_impl->m_selectCallback = std::move(callback);
+    m_impl->m_selectedCallback = std::move(callback);
 }
 
 void Button::setUnselectCallback(ButtonCallback callback) {
-    m_impl->m_unselectCallback = std::move(callback);
+    m_impl->m_unselectedCallback = std::move(callback);
+}
+
+void Button::setSwallowTouches(bool swallow) {
+    m_impl->m_swallow = swallow;
+    if (auto handler = CCTouchDispatcher::get()->findHandler(this)) {
+        static_cast<CCTargetedTouchHandler*>(handler)->setSwallowsTouches(swallow);
+    }
+}
+
+bool Button::isSwallowingTouches() {
+    return m_impl->m_swallow;
+}
+
+void Button::setDragCancelDistance(float distance) {
+    m_impl->m_dragCancelDistance = distance;
+}
+
+float Button::getDragCancelDistance() {
+    return m_impl->m_dragCancelDistance;
 }
 
 class SharedButtonHandler::Impl final {
@@ -517,7 +599,11 @@ bool SharedButtonHandler::containsTouch(Button* button, CCTouch* touch) {
 
     auto rect = cocos2d::CCRect{-dx, -dy, scaledWidth, scaledHeight};
 
-    return rect.containsPoint(local);
+    if (!rect.containsPoint(local)) {
+        return false;
+    }
+
+    return isInsideClippers(button, touch->getLocation());
 }
 
 void SharedButtonHandler::setActiveButton(Button* button) {

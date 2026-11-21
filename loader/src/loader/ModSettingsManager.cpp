@@ -3,6 +3,7 @@
 #include <Geode/utils/JsonValidation.hpp>
 #include <Geode/utils/StringMap.hpp>
 #include "ModImpl.hpp"
+#include "../utils/KeyboardImpl.hpp"
 
 using namespace geode::prelude;
 
@@ -73,7 +74,7 @@ public:
         if (fullType.starts_with("custom:")) {
             auto full = std::string(fullType.substr(fullType.find(':') + 1));
             // If there's no mod ID in the type name, use the current mod's ID
-            if (full.find('/') == std::string_view::npos) {
+            if (!full.contains('/')) {
                 full = fmt::format("{}/{}", modID, full);
             }
             auto it = m_types.find(full);
@@ -93,14 +94,14 @@ public:
     }
 };
 
-// This is used for migrating old keybind configurations from Custom Keybinds 
+// This is used for migrating old keybind configurations from Custom Keybinds
 // over to the new Keybind settings system
 class OldCKSaveData final {
 private:
     matjson::Value m_data;
 
     // Load the savedata of Custom Keybinds from disk
-    // This doesn't (and shouldn't) depend on Custom Keybinds being loaded or 
+    // This doesn't (and shouldn't) depend on Custom Keybinds being loaded or
     // even installed
     OldCKSaveData()
       : m_data(file::readJson(
@@ -113,7 +114,7 @@ private:
             // Both of these are just enumKeyCodes turned into an integer
             case hash("geode.custom-keybinds/controller"):
             case hash("geode.custom-keybinds/keyboard"): {
-                return static_cast<enumKeyCodes>(code);
+                return migrateOldKeyCode(code);
             } break;
 
             // This is a special enum in CK (with two members lol)
@@ -125,8 +126,8 @@ private:
                 }
             } break;
 
-            // Unknown devices are theoretically possible but I don't think 
-            // anyone ever did those. Regardless, if they did, they're so rare 
+            // Unknown devices are theoretically possible but I don't think
+            // anyone ever did those. Regardless, if they did, they're so rare
             // we can expect users to just manually migrate their bindings
             default: return KEY_None;
         }
@@ -140,7 +141,7 @@ public:
 
     std::optional<std::vector<Keybind>> getOldValue(std::string_view key) {
         if (auto value = m_data.get(key)) {
-            // Using JSON validation so the code is cleaner, we don't 
+            // Using JSON validation so the code is cleaner, we don't
             // really care if the parsing is succesful or not though
             auto root = checkJson(std::move(value).unwrap(), std::string(key));
             auto binds = root.needs("binds");
@@ -188,6 +189,7 @@ public:
     // update this by calling saveSettingValueToSave
     matjson::Value savedata;
     bool restartRequired = false;
+    SaveRequestState saveRequestState = SaveRequestState::Clean;
 
     bool loadSettingValueFromSave(std::string const& key) {
         if (this->savedata.contains(key) && this->settings.contains(key)) {
@@ -217,7 +219,7 @@ public:
             // value loaded from disk isn't overwritten
             matjson::Value value;
             if (sett.v3->save(value)) {
-                this->savedata[key] = value;
+                this->savedata[key] = std::move(value);
             }
             else {
                 log::error("Unable to save setting '{}' for mod {}", key, this->modID);
@@ -237,6 +239,8 @@ public:
             }
             if (auto v3 = (*gen)(key, modID, setting.json)) {
                 setting.v3 = v3.unwrap();
+
+                // this is necessary for custom settings
                 this->loadSettingValueFromSave(key);
             }
             else {
@@ -280,6 +284,22 @@ void ModSettingsManager::markRestartRequired() {
     m_impl->restartRequired = true;
 }
 
+void ModSettingsManager::queueSave() {
+    if(m_impl->saveRequestState == SaveRequestState::Clean) {
+        m_impl->saveRequestState = SaveRequestState::SaveOnce;
+    }
+}
+
+void ModSettingsManager::saveFinished() {
+    if(m_impl->saveRequestState == SaveRequestState::SaveOnce) {
+        m_impl->saveRequestState = SaveRequestState::Clean;
+    }
+}
+
+bool ModSettingsManager::shouldSave() const {
+    return m_impl->saveRequestState != SaveRequestState::Clean;
+}
+
 Result<> ModSettingsManager::registerCustomSettingType(std::string_view type, SettingGenerator generator) {
     GEODE_UNWRAP(SharedSettingTypesPool::get().add(m_impl->modID, type, std::move(generator)));
     m_impl->createSettings();
@@ -298,7 +318,7 @@ Result<> ModSettingsManager::load(matjson::Value const& json) {
         m_impl->savedata = json;
         for (auto const& [key, _] : json) {
             if (!m_impl->loadSettingValueFromSave(key)) {
-                // If this is a keybind setting and it hasn't yet been saved, 
+                // If this is a keybind setting and it hasn't yet been saved,
                 // then try migrating it
                 if (auto kb = typeinfo_pointer_cast<KeybindSettingV3>(this->get(key))) {
                     if (auto migrateFrom = kb->getMigrateFrom()) {
@@ -308,6 +328,14 @@ Result<> ModSettingsManager::load(matjson::Value const& json) {
                         }
                     }
                 }
+            }
+        }
+
+        for (auto const& [key, _] : m_impl->settings) {
+            if (!json.contains(key)) {
+                log::error("Unable to load setting '{}' for mod {} (not found in savedata)", key, m_impl->modID);
+                this->queueSave();
+                break;
             }
         }
     }
@@ -323,6 +351,8 @@ matjson::Value ModSettingsManager::save() {
 }
 
 matjson::Value& ModSettingsManager::getSaveData() {
+    m_impl->saveRequestState = SaveRequestState::SaveUntilExit;
+
     return m_impl->savedata;
 }
 

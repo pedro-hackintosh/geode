@@ -5,6 +5,7 @@
 #include <Geode/utils/string.hpp>
 #include <Geode/utils/ZStringView.hpp>
 #include <tulip/TulipHook.hpp>
+#include <asp/fs/fs.hpp>
 #include <thread>
 #include <dlfcn.h>
 #include <cxxabi.h>
@@ -300,8 +301,8 @@ std::vector<Register> CrashContext::getRegisters() {
     return registers;
 }
 
-std::string_view CrashContext::getGeodeBinaryName() {
-    return "Geomoded.so";
+asp::fs::PathView CrashContext::getGeodeBinaryName() {
+    return "Geode.so";
 }
 
 /// Source: https://cs.android.com/android/platform/superproject/main/+/main:bionic/libc/bionic/android_set_abort_message.cpp
@@ -340,7 +341,7 @@ void CrashContext::writeInfo(Buffer& stream) {
     stream.append("Faulty Lib: {}\n", image ? image->name() : "<Unknown>");
     stream.append("Faulty Mod: {}\n", faultyMod ? faultyMod->getID() : "<Unknown>");
     stream.append("Instruction Address: ");
-    this->formatAddress(crashAddr, infoStream);
+    this->formatAddress(crashAddr, stream);
 
     stream.append("\nSignal: {}, code {} ({})\n", s_siginfo->si_signo, s_siginfo->si_code, getSignalCodeString(s_signal, s_siginfo));
 
@@ -459,13 +460,13 @@ bool crashlog::setupPlatformHandler() {
         std::thread(&handlerThread).detach();
     }
 
-    std::filesystem::remove(crashlog::getCrashLogDirectory() / "lastSessionDidCrash");
-    std::filesystem::remove(crashlog::getCrashLogDirectory() / "last-pid");
+    (void) asp::fs::remove(crashlog::getCrashLogDirectory() / "lastSessionDidCrash");
+    (void) asp::fs::remove(crashlog::getCrashLogDirectory() / "last-pid");
 
     auto crashIndicatorPath = crashlog::getCrashLogDirectory() / crashIndicatorFilename;
-    if (std::filesystem::exists(crashIndicatorPath)) {
+    if (crashIndicatorPath.exists()) {
         s_lastLaunchCrashed = true;
-        std::filesystem::remove(crashIndicatorPath);
+        (void) asp::fs::remove(crashIndicatorPath);
     }
 
     return true;
@@ -477,6 +478,6 @@ bool crashlog::didLastLaunchCrash() {
     return s_lastLaunchCrashed;
 }
 
-std::filesystem::path crashlog::getCrashLogDirectory() {
+asp::fs::Path crashlog::getCrashLogDirectory() {
     return dirs::getGeodeDir() / "crashlogs";
 }

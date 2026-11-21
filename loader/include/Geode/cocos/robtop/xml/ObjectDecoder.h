@@ -3,7 +3,8 @@
 
 class DS_Dictionary;
 
-#include "../../include/cocos2d.h"
+#include "../../cocoa/CCObject.h"
+#include "../../robtop/xml/DS_Dictionary.h"
 
 // @note RobTop Addition
 class CC_DLL ObjectDecoderDelegate {
@@ -23,6 +24,9 @@ public:
 	cocos2d::CCObject* getDecodedObject(int, DS_Dictionary*);
 
 	virtual bool init();
+
+	ObjectDecoderDelegate* getDelegate() const { return m_delegate; }
+	void setDelegate(ObjectDecoderDelegate* delegate) { m_delegate = delegate; }
 
 public:
 	ObjectDecoderDelegate* m_delegate;

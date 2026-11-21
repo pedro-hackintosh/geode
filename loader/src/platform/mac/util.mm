@@ -9,29 +9,25 @@ using namespace geode::prelude;
 #include <Geode/binding/GameManager.hpp>
 #include <objc/runtime.h>
 #include <Geode/utils/web.hpp>
-#include <Geode/utils/Task.hpp>
 #include <string.h>
 #include <arc/sync/oneshot.hpp>
 #include <mach-o/utils.h>
 #include <sys/sysctl.h>
+#include <Geode/cocos/platform/mac/CCApplication.h>
+#include <Geode/cocos/actions/CCActionManager.h>
 
 #define CommentType CommentTypeDummy
 #import <AppKit/AppKit.h>
 #import <Cocoa/Cocoa.h>
 #import <Foundation/Foundation.h>
+#import <Geode/cocos/platform/mac/EAGLView.h>
 #undef CommentType
 
+template <typename T>
+NSString* intoNS(T&& input) {
+    std::string_view str{input};
 
-NSString* intoNS(std::string const& str) {
-    return [NSString stringWithUTF8String:str.c_str()];
-}
-
-NSString* intoNS(std::string_view str) {
     return [[NSString alloc] initWithBytes:str.data() length:str.size() encoding:NSUTF8StringEncoding];
-}
-
-NSString* intoNS(ZStringView str) {
-    return intoNS(std::string_view(str));
 }
 
 bool utils::clipboard::write(ZStringView data) {
@@ -49,8 +45,8 @@ std::string utils::clipboard::read() {
     return std::string(clipboard);
 }
 
-bool utils::file::openFolder(std::filesystem::path const& path) {
-    NSURL* folderURL = [NSURL fileURLWithPath:intoNS(utils::string::pathToString(path))];
+bool utils::file::openFolder(asp::fs::PathView path) {
+    NSURL* folderURL = [NSURL fileURLWithPath:intoNS(path.string())];
     [[NSWorkspace sharedWorkspace] openURL:folderURL];
     return true;
 }
@@ -61,13 +57,13 @@ void utils::web::openLinkUnsafe(ZStringView url) {
 }
 
 /*@interface FileDialog : NSObject
-+ (Result<std::filesystem::path>)importDocumentWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options mult:(bool)mult;
-+ (Result<std::vector<std::filesystem::path>>)importDocumentsWithOptions:(file::FilePickOptions const&)options;
++ (Result<asp::fs::Path>)importDocumentWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options mult:(bool)mult;
++ (Result<std::vector<asp::fs::Path>>)importDocumentsWithOptions:(file::FilePickOptions const&)options;
 @end
 
 @implementation FileDialog
 
-+ (Result<std::filesystem::path>)importDocumentWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options mult:(bool)mult {
++ (Result<asp::fs::Path>)importDocumentWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options mult:(bool)mult {
     NSOpenPanel* panel = [NSOpenPanel openPanel];
     // TODO: [panel setAllowedFileTypes:@[]];
 
@@ -82,7 +78,7 @@ void utils::web::openLinkUnsafe(ZStringView url) {
     if (result == NSFileHandlingPanelOKButton) {
         auto fileUrl = [[panel URLs] objectAtIndex:0];
         auto path = std::string([[fileUrl path] UTF8String], [[fileUrl path] lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
-        return Ok(std::filesystem::path(path));
+        return Ok(asp::fs::Path(path));
     } else {
         return Err(result);
     }
@@ -91,16 +87,16 @@ void utils::web::openLinkUnsafe(ZStringView url) {
 @end*/
 
 namespace {
-    using FileResult = Result<std::vector<std::filesystem::path>>;
+    using FileResult = Result<std::vector<asp::fs::Path>>;
 }
 
 @interface FileDialog : NSObject
-+(Result<std::vector<std::filesystem::path>>) filePickerWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options multiple:(bool)mult;
++(Result<std::vector<asp::fs::Path>>) filePickerWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options multiple:(bool)mult;
 +(void) dispatchFilePickerWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options multiple:(bool)mult onCompletion:(void(^)(FileResult&&))onCompletion;
 @end
 
 @implementation FileDialog
-+(Result<std::vector<std::filesystem::path>>) filePickerWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options multiple:(bool)mult {
++(Result<std::vector<asp::fs::Path>>) filePickerWithMode:(file::PickMode)mode options:(file::FilePickOptions const&)options multiple:(bool)mult {
     NSSavePanel* panel;
     if (mode == file::PickMode::SaveFile)
         panel = [NSSavePanel savePanel];
@@ -114,12 +110,12 @@ namespace {
     if (options.defaultPath) {
         auto path = options.defaultPath.value();
 
-        if (std::filesystem::is_directory(path) || mode == file::PickMode::OpenFolder) {
-            auto defaultPath = intoNS(options.defaultPath.value());
+        if (path.isDir() || mode == file::PickMode::OpenFolder) {
+            auto defaultPath = intoNS(path.string());
             [panel setDirectoryURL: [NSURL fileURLWithPath: defaultPath]];
         } else {
-            auto defaultPath = intoNS(options.defaultPath->parent_path());
-            auto name = intoNS(options.defaultPath->filename());
+            auto defaultPath = intoNS(path.parent().value().string());
+            auto name = intoNS(path.filename().value());
 
             [panel setDirectoryURL: [NSURL fileURLWithPath: defaultPath]];
             [panel setNameFieldStringValue: name];
@@ -160,7 +156,7 @@ namespace {
     int result = [panel runModal];
 
     if (result == NSModalResponseOK) {
-        std::vector<std::filesystem::path> fileURLs;
+        std::vector<asp::fs::Path> fileURLs;
         if (mode == file::PickMode::SaveFile) {
             fileURLs.push_back(std::string([[[panel URL] path] UTF8String]));
         }
@@ -187,7 +183,7 @@ namespace {
 
 @end
 
-GEODE_DLL arc::Future<Result<std::optional<std::filesystem::path>>> file::pick(file::PickMode mode, file::FilePickOptions options) {
+GEODE_DLL arc::Future<Result<std::optional<asp::fs::Path>>> file::pick(file::PickMode mode, file::FilePickOptions options) {
     auto [tx, rx] = arc::oneshot::channel<FileResult>();
     __block auto sender = std::move(tx);
 
@@ -217,7 +213,7 @@ GEODE_DLL arc::Future<Result<std::optional<std::filesystem::path>>> file::pick(f
     co_return Ok(std::move(paths[0]));
 }
 
-GEODE_DLL arc::Future<Result<std::vector<std::filesystem::path>>> file::pickMany(file::FilePickOptions options) {
+GEODE_DLL arc::Future<Result<std::vector<asp::fs::Path>>> file::pickMany(file::FilePickOptions options) {
     auto [tx, rx] = arc::oneshot::channel<FileResult>();
     __block auto sender = std::move(tx);
 
@@ -235,7 +231,7 @@ GEODE_DLL arc::Future<Result<std::vector<std::filesystem::path>>> file::pickMany
     if (!res) {
         auto err = std::move(res).unwrapErr();
         if (err == "File picker cancelled") {
-            co_return Ok(std::vector<std::filesystem::path>{});
+            co_return Ok(std::vector<asp::fs::Path>{});
         }
         co_return Err(std::move(err));
     }
@@ -243,35 +239,56 @@ GEODE_DLL arc::Future<Result<std::vector<std::filesystem::path>>> file::pickMany
     co_return Ok(std::move(res).unwrap());
 }
 
-CCPoint cocos::getMousePos() {
-    auto windowFrame = NSApp.mainWindow.frame;
-    auto viewFrame = NSApp.mainWindow.contentView.frame;
-    auto scaleFactor = CCPoint(CCDirector::get()->getWinSize()) / ccp(viewFrame.size.width, viewFrame.size.height);
-    auto mouse = [NSEvent mouseLocation];
-    return ccp(mouse.x - windowFrame.origin.x, mouse.y - windowFrame.origin.y) * scaleFactor;
+void cocos::setMousePos(cocos2d::CCPoint const& pos) {
+    static Class eaglViewClass = objc_getClass("EAGLView");
+
+    id glview = [eaglViewClass sharedEGLView];
+    NSWindow* window = [glview window];
+    if (!glview || !window) return;
+
+    const auto winSize = CCDirector::get()->getWinSize();
+    const auto npos = pos / winSize;
+    const auto viewPos = NSPoint {
+        npos.x * [glview getWidth],
+        npos.y * [glview getHeight]
+    };
+
+    const auto windowPos = [glview convertPoint:viewPos toView:nil];
+    const auto screenPos = [window convertPointToScreen:windowPos];
+    const auto height = [[[NSScreen screens] firstObject] frame].size.height;
+    CGWarpMouseCursorPosition(CGPointMake(screenPos.x, height - screenPos.y));
+    CGAssociateMouseAndMouseCursorPosition(true);
+
+    //make sure mouse-pos cache isn't stale. y is flipped to match storeEventPoint's impl
+    auto cls = object_getClass(glview);
+    auto ivarX = class_getInstanceVariable(cls, "_mouseX");
+    auto ivarY = class_getInstanceVariable(cls, "_mouseY");
+    if (!ivarX || !ivarY) return;
+
+    *reinterpret_cast<float*>(reinterpret_cast<intptr_t>(glview) + ivar_getOffset(ivarX)) = viewPos.x;
+    *reinterpret_cast<float*>(reinterpret_cast<intptr_t>(glview) + ivar_getOffset(ivarY)) = [glview getHeight] - viewPos.y;
 }
 
-std::filesystem::path dirs::getGameDir() {
-    static auto path = [] {
+asp::fs::Path dirs::getGameDir() {
+    static auto path = [] -> asp::fs::Path {
         std::array<char, PATH_MAX> gddir;
 
         uint32_t out = PATH_MAX;
         _NSGetExecutablePath(gddir.data(), &out);
 
-        std::filesystem::path gdpath = gddir.data();
-        auto currentPath = std::filesystem::canonical(gdpath.parent_path().parent_path());
-        return currentPath;
+        asp::fs::Path gdpath = gddir.data();
+        return gdpath.parent()->parent().value();
     }();
 
     return path;
 }
 
-std::filesystem::path dirs::getSaveDir() {
+asp::fs::Path dirs::getSaveDir() {
     static auto path = [] {
         NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
         NSString *applicationSupportDirectory = [paths firstObject];
 
-        std::filesystem::path supportPath = [applicationSupportDirectory UTF8String];
+        asp::fs::Path supportPath = [applicationSupportDirectory UTF8String];
         auto currentPath = supportPath / "GeometryDash";
         return currentPath;
     }();
@@ -279,12 +296,12 @@ std::filesystem::path dirs::getSaveDir() {
     return path;
 }
 
-std::filesystem::path dirs::getModRuntimeDir() {
-    return dirs::getGeodeDir() / "unzipped";
+asp::fs::Path dirs::getResourcesDir() {
+    return dirs::getGameDir() / "Resources";
 }
 
-std::filesystem::path dirs::getResourcesDir() {
-    return dirs::getGameDir() / "Resources";
+asp::fs::Path dirs::getGeodeInternalDir() {
+    return dirs::getGeodeDir();
 }
 
 void geode::utils::game::exit(bool save) {
@@ -319,24 +336,32 @@ void geode::utils::game::exit(bool save) {
     ), CCDirector::get()->getRunningScene(), false);
 }
 
-void geode::utils::game::restart(bool save) {
+void geode::utils::game::restart(bool saveData, bool safeMode) {
     if (CCApplication::sharedApplication() &&
         (GameManager::get()->m_playLayer || GameManager::get()->m_levelEditorLayer)) {
         log::error("Cannot restart in PlayLayer or LevelEditorLayer!");
         return;
     }
 
+    static bool s_safeMode = safeMode;
+    s_safeMode = safeMode;
+
     auto restart = +[] {
         log::info("Restarting game...");
         auto gdExec = dirs::getGameDir() / "MacOS" / "Geometry Dash";
 
         NSTask *task = [NSTask new];
-        [task setLaunchPath: intoNS(utils::string::pathToString(gdExec))];
+        [task setLaunchPath: intoNS(gdExec.string())];
+
+        if (s_safeMode) {
+            [task setArguments: @[@"--geode:safe-mode"]];
+        }
+
         [task launch];
     };
 
     std::atexit(restart);
-    exit(save);
+    exit(saveData);
 }
 
 void geode::utils::game::launchLoaderUninstaller(bool deleteSaveData) {
@@ -394,22 +419,28 @@ void geode::utils::permission::requestPermission(Permission permission, geode::F
 
 #include "../../utils/thread.hpp"
 
+static std::optional<std::string> getNameFromOs() {
+    char buf[64];
+    int result = pthread_getname_np(pthread_self(), buf, sizeof(buf));
+    if (result != 0 || buf[0] == '\0') return std::nullopt;
+
+    return buf;
+}
+
 std::string geode::utils::thread::getDefaultName() {
+    // try to request name from the OS first, fallback to a simple format if fails
+    if (auto name = getNameFromOs()) {
+        return *name;
+    }
+
     uint64_t tid = 0ul;
     pthread_threadid_np(nullptr, &tid);
-
     return fmt::format("Thread #{}", tid);
 }
 
 void geode::utils::thread::platformSetName(ZStringView name) {
     pthread_setname_np(name.c_str());
 }
-
-@interface EAGLView : NSOpenGLView
-+(EAGLView*) sharedEGLView;
-
--(float) getBackingFactor;
-@end
 
 float geode::utils::getDisplayFactor() {
     // while this is also accessible from the NSWindow, the game uses the value in EAGLView

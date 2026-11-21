@@ -1,4 +1,5 @@
-#include <Geode/Geode.hpp>
+#include <Geode/platform/cplatform.h>
+
 #ifndef GEODE_IS_IOS
 #include <Geode/utils/VMTHookManager.hpp>
 #include <Geode/modify/Traits.hpp>
@@ -7,6 +8,8 @@
 using namespace geode::prelude;
 
 struct CCMenuSelectedFix : Modify<CCMenuSelectedFix, CCMenu> {
+    GEODE_FORWARD_COMPAT_DISABLE_HOOKS("CCMenuSelectedFix")
+
     bool initWithArray(CCArray* arr) {
         if (!CCMenu::initWithArray(arr)) return false;
 

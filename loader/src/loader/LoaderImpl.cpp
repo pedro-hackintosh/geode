@@ -1,17 +1,22 @@
 #include "LoaderImpl.hpp"
-#include <cocos2d.h>
 
+#include "LogImpl.hpp"
 #include "ModImpl.hpp"
 #include "ModMetadataImpl.hpp"
-#include "LogImpl.hpp"
-#include "console.hpp"
 
-#include <Geode/loader/Event.hpp>
+#include <Geode/Enums.hpp>
+#include <Geode/cocos/platform/CCApplication.h>
+#include <Geode/cocos/platform/CCFileUtils.h>
+#include <Geode/cocos/text_input_node/CCIMEDispatcher.h>
+#include <Geode/cocos/textures/CCTextureCache.h>
 #include <Geode/loader/Dirs.hpp>
+#include <Geode/loader/Event.hpp>
 #include <Geode/loader/IPC.hpp>
 #include <Geode/loader/Loader.hpp>
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
+#include <Geode/loader/SettingV3.hpp>
+#include <Geode/ui/Popup.hpp>
 #include <Geode/utils/JsonValidation.hpp>
 #include <Geode/utils/file.hpp>
 #include <Geode/utils/map.hpp>
@@ -19,27 +24,20 @@
 #include <Geode/utils/string.hpp>
 #include <Geode/utils/web.hpp>
 #include <about.hpp>
+#include <algorithm>
+#include <asp/fs/fs.hpp>
 #include <crashlog.hpp>
 #include <fmt/format.h>
 #include <hash.hpp>
-#include <iostream>
 #include <iterator>
 #include <optional>
-#include <resources.hpp>
+#include <server/DownloadManager.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
 
-#include <server/DownloadManager.hpp>
-#include <Geode/ui/Popup.hpp>
-
 using namespace geode::prelude;
-
-comm::EventCenter* geode::comm::EventCenter::get() {
-    static auto s_instance = new EventCenter();
-    return s_instance;
-}
 
 Loader::Impl* LoaderImpl::get() {
     return Loader::get()->m_impl.get();
@@ -53,6 +51,7 @@ Loader::Impl::~Impl() = default;
 
 void Loader::Impl::createDirectories() {
     log::debug("Creating necessary directories");
+
     (void) utils::file::createDirectoryAll(dirs::getSaveDir());
     (void) utils::file::createDirectoryAll(dirs::getGeodeResourcesDir());
     (void) utils::file::createDirectoryAll(dirs::getModConfigDir());
@@ -61,19 +60,13 @@ void Loader::Impl::createDirectories() {
     (void) utils::file::createDirectoryAll(dirs::getTempDir());
     (void) utils::file::createDirectoryAll(dirs::getModRuntimeDir());
 
+#ifdef GEODE_IS_ANDROID
+    // fallback for users who need to install resources manually
+    (void) utils::file::moveDirectoryContents(dirs::getGeodeDir() / "resources", dirs::getGeodeResourcesDir());
+#endif
+
     if (!ranges::contains(m_modSearchDirectories, dirs::getModsDir())) {
         m_modSearchDirectories.push_back(dirs::getModsDir());
-    }
-}
-
-void Loader::Impl::removeDirectories() {
-    log::debug("Removing unnecessary directories");
-    // clean up of stale data from Geode v2
-    if(std::filesystem::exists(dirs::getGeodeDir() / "index")) {
-        async::runtime().spawnBlocking<void>([] {
-            std::error_code ec;
-            std::filesystem::remove_all(dirs::getGeodeDir() / "index", ec);
-        });
     }
 }
 
@@ -98,7 +91,7 @@ Result<> Loader::Impl::setup() {
             log::info("Disabling runtime intervening");
             auto res = tulip::hook::disableRuntimeIntervening((void*)(base::get() + offset.unwrap()));
             if (res.isErr()) {
-                log::error("Failed to disable runtime intervening: {}", res.unwrapErr());
+                log::error("Failed to disable runtime intervening: {}", res.unwrapErr().toString());
             } else {
                 log::info("Runtime intervening disabled successfully");
                 m_isPatchless = true;
@@ -129,6 +122,13 @@ Result<> Loader::Impl::setup() {
         log::info("Crash handler setup skipped");
     }
 
+    LoaderUpdateModResourcesEvent().listen([this](std::vector<Mod*> mods) {
+        for (auto mod : mods) {
+            this->updateModResources(mod);
+        }
+        return ListenerResult::Stop;
+    }).leak();
+
     log::info("Loading hooks");
     if (log::NestScope nest; !this->loadHooks()) {
         return Err("There were errors loading some hooks, see console for details");
@@ -138,7 +138,6 @@ Result<> Loader::Impl::setup() {
     {
         log::NestScope nest;
         this->createDirectories();
-        this->removeDirectories();
         this->addSearchPaths();
     }
 
@@ -156,19 +155,30 @@ Result<> Loader::Impl::setup() {
 
 void Loader::Impl::addSearchPaths() {
     log::debug("Adding search paths");
-    CCFileUtils::get()->addPriorityPath(utils::string::pathToString(dirs::getGeodeResourcesDir()).c_str());
-    CCFileUtils::get()->addPriorityPath(utils::string::pathToString(dirs::getModRuntimeDir()).c_str());
+    CCFileUtils::get()->addPriorityPath(dirs::getGeodeResourcesDir().c_str());
+    CCFileUtils::get()->addPriorityPath(dirs::getModRuntimeDir().c_str());
 }
 
 void Loader::Impl::updateResources(bool forceReload) {
     log::debug("Adding resources");
+
     log::NestScope nest;
+    std::vector<Mod*> mods;
     for (auto const& [_, mod] : m_mods) {
         if (!forceReload && ModImpl::getImpl(mod)->m_resourcesLoaded)
             continue;
-        this->updateModResources(mod);
+        mods.push_back(mod);
+    }
+
+    // allow mods to override the process of loading resources, since some mods may
+    // have a much more efficient way than our simple single threaded loop
+    // by default this will just end up calling `updateModResources` on each mod
+    LoaderUpdateModResourcesEvent().send(mods);
+
+    for (auto mod : mods) {
         ModImpl::getImpl(mod)->m_resourcesLoaded = true;
     }
+
     // deduplicate mod resource paths, since they added in both updateModResources and Mod::Impl::setup
     // we have to call it in both places since setup is only called once ever, but updateResources is called
     // on every texture reload
@@ -254,12 +264,6 @@ Mod* Loader::Impl::getLoadedMod(std::string_view id) const {
 void Loader::Impl::updateModResources(Mod* mod) {
     // skip disabled mods
     if (!mod->isOrWillBeEnabled()) return;
-    
-    if (!mod->isInternal()) {
-        // geode.loader resource is stored somewhere else, which is already added anyway
-        auto searchPathRoot = dirs::getModRuntimeDir() / mod->getID() / "resources";
-        CCFileUtils::get()->addSearchPath(utils::string::pathToString(searchPathRoot).c_str());
-    }
 
     // only thing needs previous setup is spritesheets
     auto& sheets = mod->getMetadata().getSpritesheets();
@@ -316,31 +320,35 @@ void Loader::Impl::addProblem(LoadProblem const& problem) {
 
 // Dependencies and refreshing
 
-void Loader::Impl::queueMods(std::vector<ModMetadata>& modQueue) {
+Result<> Loader::Impl::queueMods(std::vector<ModMetadata>& modQueue) {
     for (auto const& dir : m_modSearchDirectories) {
         log::debug("Searching {}", dir);
         log::NestScope nest;
-        for (auto const& entry : std::filesystem::directory_iterator(dir)) {
-            if (!std::filesystem::is_regular_file(entry) ||
-                entry.path().extension() != GEODE_MOD_EXTENSION)
+
+        for (auto result : GEODE_UNWRAP(asp::fs::iterDir(dir))) {
+            auto entry = GEODE_UNWRAP(result);
+
+            if (!entry.isFile() || entry.path.extension() != GEODE_MOD_EXTENSION)
                 continue;
 
-            log::debug("Found {}", entry.path().filename());
+            log::debug("Found {}", entry.path.filename());
             log::NestScope nest;
 
-            auto modMetadata = ModMetadata::createFromGeodeFile(entry.path());
+            auto modMetadata = ModMetadata::createFromGeodeFile(entry.path);
 
             log::debug("id: {}", modMetadata.getID());
             log::debug("version: {}", modMetadata.getVersion());
             log::debug("early: {}", modMetadata.needsEarlyLoad() ? "yes" : "no");
 
-            if (std::find_if(modQueue.begin(), modQueue.end(), [&](auto& item) {
-                    return modMetadata.getID() == item.getID();
-                }) != modQueue.end()) {
+            bool alreadyQueued = asp::iter::from(modQueue).any([&](auto& item) {
+                return item.getID() == modMetadata.getID();
+            });
+
+            if (alreadyQueued) {
                 log::error("Failed to queue: a mod with the same ID is already queued");
 
                 auto modMetadata = ModMetadataImpl::createInvalidMetadata(
-                    entry.path(),
+                    entry.path,
                     "A mod with the same ID is already present.",
                     // Passing `nullopt` to `createInvalidMetadata` generates a
                     // random non-conflicting ID
@@ -354,6 +362,8 @@ void Loader::Impl::queueMods(std::vector<ModMetadata>& modQueue) {
             modQueue.push_back(modMetadata);
         }
     }
+
+    return Ok();
 }
 
 void Loader::Impl::populateModList(std::vector<ModMetadata>& modQueue) {
@@ -406,32 +416,55 @@ void Loader::Impl::populateModList(std::vector<ModMetadata>& modQueue) {
                 });
             }
 
-            auto it = m_keybindSettings.find(keybind);
-            if (it == m_keybindSettings.end()) {
-                return ListenerResult::Propagate;
+            // build up all keybinds to look for, starting with the most specific to least specific
+            // this is for modifier fallthrough functionality
+            std::vector<Keybind> keybindsToCheck;
+            int baseMask = keybind.modifiers.value;
+
+            for (int submask = baseMask; ; submask = (submask - 1) & baseMask) {
+                keybindsToCheck.push_back(Keybind(keybind.key, submask));
+
+                if (submask == 0) {
+                    break;
+                }
             }
 
+            std::ranges::sort(keybindsToCheck, [](const Keybind& a, const Keybind& b) {
+                return std::popcount(a.modifiers.value) > std::popcount(b.modifiers.value);
+            });
+
+            // now we run the code that already existed before the
+            // modifier fallthrough functionality was added but we
+            // loop it through all modifier combinations we just found
             bool imeActive = CCIMEDispatcher::sharedDispatcher()->hasDelegate();
 
-            if (down) {
-                for (auto& setting : it->second) {
-                    if (imeActive && !setting->getAllowInTextInputs()) {
-                        continue;
-                    }
-                    if (!repeat) m_activeKeybinds[setting.get()] = keybind;
-                    if (KeybindSettingPressedEventV3(setting->getModID(), setting->getKey()).send(keybind, down, repeat, data.timestamp)) {
-                        return ListenerResult::Stop;
-                    }
+            for(const auto& keybind : keybindsToCheck) {
+                auto it = m_keybindSettings.find(keybind);
+                if (it == m_keybindSettings.end()) {
+                    continue;
                 }
-            } else {
-                for (auto& setting : it->second) {
-                    auto it2 = m_activeKeybinds.find(setting.get());
-                    if (it2 != m_activeKeybinds.end() && it2->second.key == data.key) {
-                        KeybindSettingPressedEventV3(setting->getModID(), setting->getKey()).send(keybind, down, repeat, data.timestamp);
-                        m_activeKeybinds.erase(it2);
+
+                if (down) {
+                    for (auto& setting : it->second) {
+                        if (imeActive && !setting->getAllowInTextInputs()) {
+                            continue;
+                        }
+                        if (!repeat) m_activeKeybinds[setting.get()] = keybind;
+                        if (KeybindSettingPressedEventV3(setting->getModID(), setting->getKey()).send(keybind, down, repeat, data.timestamp)) {
+                            return ListenerResult::Stop;
+                        }
+                    }
+                } else {
+                    for (auto& setting : it->second) {
+                        auto it2 = m_activeKeybinds.find(setting.get());
+                        if (it2 != m_activeKeybinds.end() && it2->second.key == data.key) {
+                            KeybindSettingPressedEventV3(setting->getModID(), setting->getKey()).send(keybind, down, repeat, data.timestamp);
+                            m_activeKeybinds.erase(it2);
+                        }
                     }
                 }
             }
+
             return ListenerResult::Propagate;
         }).leak();
 
@@ -523,6 +556,7 @@ void Loader::Impl::loadModGraph(Mod* node, bool early) {
 
     auto loadFunction = [this, node, early]() {
         if (node->shouldLoad()) {
+            node->m_impl->loadNativeModBinaries();
             log::debug("Loading binary");
             auto res = node->m_impl->loadBinary();
             if (!res) {
@@ -535,42 +569,70 @@ void Loader::Impl::loadModGraph(Mod* node, bool early) {
                 m_refreshingModCount -= 1;
                 return;
             }
+            this->setupActionIds(node);
         }
 
         m_refreshingModCount -= 1;
     };
 
-    if (early) {
-        auto res = unzipFunction();
-        if (!res) {
-            this->addProblem({ LoadProblem::Type::Unknown, node, res.unwrapErr() });
-            log::error("Failed to unzip: {}", res.unwrapErr());
-            m_refreshingModCount -= 1;
-            return;
+    auto res = [this, node, early, unzipFunction]() {
+    auto unzipped = m_unzipResults.find(node);
+        if (early) {
+            // Early load mods are eagerly unzipped
+            return unzipFunction();
         }
-        loadFunction();
-    }
-    else {
-        auto nest = log::saveNest();
+        else if (unzipped == m_unzipResults.end()) {
+            // Normal mods should be unzipped by startUnzippingMods but let's eagerly unzip
+            // if we reach some weird invalid state instead of crashing
+            log::error("{} wasn't unzipped in the background, unzipping now", node->getID());
+            return unzipFunction();
+        }
+        else {
+            auto res = std::move(unzipped->second);
+            m_unzipResults.erase(unzipped);
+            return res;
+        }
+    }();
 
-        async::runtime().spawnBlocking<void>([=, this]() {
-            log::loadNest(nest);
-            auto res = unzipFunction();
-            this->queueInMainThread([=, this, res = std::move(res)]() {
-                auto prevNest = log::saveNest();
-                log::loadNest(nest);
-                if (!res) {
-                    this->addProblem({ LoadProblem::Type::Unknown, node, res.unwrapErr() });
-                    log::error("Failed to unzip: {}", res.unwrapErr());
-                    m_refreshingModCount -= 1;
-                    log::loadNest(prevNest);
-                    return;
-                }
-                loadFunction();
-                log::loadNest(prevNest);
+    if (!res) {
+        this->addProblem({ LoadProblem::Type::Unknown, node, res.unwrapErr() });
+        log::error("Failed to unzip: {}", res.unwrapErr());
+        m_refreshingModCount -= 1;
+        return;
+    }
+
+    loadFunction();
+}
+
+void Loader::Impl::startUnzippingMods() {
+    for (auto mod : m_modsToLoad) {
+        // Don't load stuff that isn't compatible
+        if (!mod->getMetadata().checkGameVersion() || !mod->getMetadata().checkGeodeVersion()) {
+            continue;
+        }
+        m_unzipsRunning += 1;
+        async::runtime().spawnBlocking<void>([this, mod]() {
+            auto res = this->unzipGeodeFile(mod->getMetadata());
+            this->queueInMainThread([this, mod, res = std::move(res)]() mutable {
+                m_unzipResults.emplace(mod, std::move(res));
+                m_unzipsRunning -= 1;
+                if (m_unzipsRunning == 0) this->startLoadingMods();
             });
         });
     }
+    // Nothing to unzip (or everything's for another version): load on the first frame
+    if (m_unzipsRunning == 0) {
+        this->queueInMainThread([this]() {
+            this->startLoadingMods();
+        });
+    }
+}
+
+void Loader::Impl::startLoadingMods() {
+    utils::thread::setName("Main");
+
+    log::info("Loading non-early mods");
+    this->continueRefreshModGraph();
 }
 
 void Loader::Impl::findProblems() {
@@ -751,7 +813,7 @@ void Loader::Impl::refreshModGraph() {
         return;
     }
 
-    auto begin = std::chrono::high_resolution_clock::now();
+    auto begin = asp::Instant::now();
 
     m_problems.clear();
 
@@ -760,7 +822,9 @@ void Loader::Impl::refreshModGraph() {
     std::vector<ModMetadata> modQueue;
     {
         log::NestScope nest;
-        this->queueMods(modQueue);
+        if (auto e = this->queueMods(modQueue).err()) {
+            log::error("Failed to queue mods: {}", *e);
+        }
     }
 
     m_loadingState = LoadingState::List;
@@ -796,18 +860,12 @@ void Loader::Impl::refreshModGraph() {
         }
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-    log::debug("Took {}s. Continuing next frame...", static_cast<float>(time) / 1000.f);
+    log::debug("Took {} Continuing next frame...", begin.elapsed());
 
     m_loadingState = LoadingState::Mods;
 
-    queueInMainThread([this]() {
-        utils::thread::setName("Main");
-
-        log::info("Loading non-early mods");
-        this->continueRefreshModGraph();
-    });
+    // Unzip every non-early mod, then load them (startLoadingMods) once all are unzipped
+    this->startUnzippingMods();
 }
 
 void Loader::Impl::orderModStack() {
@@ -838,7 +896,7 @@ void Loader::Impl::orderModStack() {
         if (visited.contains(mod))
             return;
         visited.insert(mod);
-        for (auto dep : mod->m_impl->m_metadata.m_impl->m_dependencies) {
+        for (auto& dep : mod->m_impl->m_metadata.m_impl->m_dependencies) {
             if (!dep.isRequired()) {
                 continue;
             }
@@ -861,16 +919,14 @@ void Loader::Impl::continueRefreshModGraph() {
         return;
     }
 
-    if  (m_lateRefreshedModCount > 0) {
-        auto end = std::chrono::high_resolution_clock::now();
-        auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - m_timerBegin).count();
-        log::debug("Took {}s", static_cast<float>(time) / 1000.f);
+    if (m_lateRefreshedModCount > 0) {
+        log::debug("Took {}", m_timerBegin.elapsed());
     }
 
     log::debug("Continuing mod graph refresh...");
     log::NestScope nest;
 
-    m_timerBegin = std::chrono::high_resolution_clock::now();
+    m_timerBegin = asp::Instant::now();
 
     switch (m_loadingState) {
         case LoadingState::Mods:
@@ -885,6 +941,8 @@ void Loader::Impl::continueRefreshModGraph() {
             [[fallthrough]];
 
         case LoadingState::Problems:
+            // Unzips of mods that weren't loaded (e.g. missing dependencies)
+            m_unzipResults.clear();
             log::info("Finding problems");
             {
                 log::NestScope nest;
@@ -892,9 +950,7 @@ void Loader::Impl::continueRefreshModGraph() {
             }
             m_loadingState = LoadingState::Done;
             {
-                auto end = std::chrono::high_resolution_clock::now();
-                auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - m_timerBegin).count();
-                log::debug("Took {}s", static_cast<float>(time) / 1000.f);
+                log::debug("Took {}", m_timerBegin.elapsed());
             }
             break;
 
@@ -925,8 +981,9 @@ void Loader::Impl::forceReset() {
     }
     m_mods.clear();
     log::Logger::get()->clear();
-    std::filesystem::remove_all(dirs::getModRuntimeDir());
-    std::filesystem::remove_all(dirs::getTempDir());
+
+    (void) asp::fs::removeDirAll(dirs::getModRuntimeDir());
+    (void) asp::fs::removeDirAll(dirs::getTempDir());
 }
 
 bool Loader::Impl::isReadyToHook() const {
@@ -952,56 +1009,71 @@ static bool isPlatformBinary(std::string_view modID, std::string_view filename) 
 Result<> Loader::Impl::unzipGeodeFile(ModMetadata metadata) {
     // Unzip .geode file into temp dir
     auto tempDir = dirs::getModRuntimeDir() / metadata.getID();
+    auto resourceDir = dirs::getGeodeResourcesDir() / metadata.getID();
 
     auto datePath = tempDir / "modified-at";
     std::string currentHash = file::readString(datePath).unwrapOr("");
 
-    std::error_code ec;
-    auto modifiedDate = std::filesystem::last_write_time(metadata.getPath(), ec);
-    if (ec) {
-        auto message = formatSystemError(ec.value());
-        return Err("Unable to get last modified time of zip: " + message);
+    auto resDatePath = resourceDir / "modified-at";
+    std::string dateHash = file::readString(resDatePath).unwrapOr("");
+
+    auto result = asp::fs::metadata(metadata.getPath()).ok().and_then([](auto metadata) {
+        return metadata.modifiedAt;
+    });
+
+    if (!result) {
+        return Err("Unable to get last modified time of zip");
     }
-    auto modifiedCount = std::chrono::duration_cast<std::chrono::milliseconds>(modifiedDate.time_since_epoch());
-    auto modifiedHash = std::to_string(modifiedCount.count());
-    if (currentHash == modifiedHash) {
-        log::debug("Same hash detected, skipping unzip");
+
+    auto modifiedDate = *result;
+    auto modifiedHash = std::to_string(modifiedDate.to_time_t());
+    // With the id: non-early mods unzip in parallel, so these lines can end up anywhere
+    if (currentHash == modifiedHash && dateHash == modifiedHash) {
+        log::debug("Same hash detected, skipping unzip of {}", metadata.getID());
         return Ok();
     }
-    log::debug("Hash mismatch detected, unzipping");
+    log::debug("Hash mismatch detected, unzipping {}", metadata.getID());
 
-    std::filesystem::remove_all(tempDir, ec);
-    if (ec) {
-        auto message = formatSystemError(ec.value());
-        return Err("Unable to delete temp dir: " + message GEODE_WINDOWS( + " Try <cg>restarting your PC</c> to fix the issue."));
+    if (auto e = asp::fs::removeDirAll(tempDir, false).err()) {
+        return Err("Unable to delete temp dir: {} " GEODE_WINDOWS(" Try <cg>restarting your PC</c> to fix the issue."), e);
+    }
+
+    if (auto e = asp::fs::removeDirAll(resourceDir, false).err()) {
+        return Err("Unable to delete resources dir: {} " GEODE_WINDOWS(" Try <cg>restarting your PC</c> to fix the issue."), e);
     }
 
     (void)utils::file::createDirectoryAll(tempDir);
+    (void)utils::file::createDirectoryAll(resourceDir);
 
     GEODE_UNWRAP_INTO(auto unzip, file::Unzip::create(metadata.getPath()));
-    if (!unzip.hasEntry(metadata.getBinaryName())) {
+    if (!unzip.hasEntry(metadata.getBinaryName().view())) {
         return Err(
             fmt::format("Unable to find platform binary under the name \"{}\"", metadata.getBinaryName())
         );
     }
     GEODE_UNWRAP(unzip.extractAllTo(tempDir));
 
+    auto tempResDir = tempDir / "resources" / metadata.getID();
+    if(tempResDir.exists() && tempResDir.isDir()) {
+        GEODE_UNWRAP(utils::file::moveDirectoryContents(tempResDir, resourceDir));
+    }
+
     // Delete binaries for other platforms since they're pointless
     // The if should never fail, but you never know
-    for (auto& entry : std::filesystem::directory_iterator(tempDir)) {
-        if (entry.is_directory()) {
+    for (auto result : GEODE_UNWRAP(asp::fs::iterDir(tempDir))) {
+        auto entry = GEODE_UNWRAP(result);
+        if (entry.isDir()) {
             continue;
         }
 
-        const std::string filename = utils::string::pathToString(entry.path().filename());
+        auto filename = entry.path.filename()->view();
         if (metadata.getBinaryName() == filename || !isPlatformBinary(metadata.getID(), filename)) {
             continue;
         }
 
         // The binary is not for our platform, delete!
         // We don't really care if the deletion succeeds though.
-        std::error_code ec;
-        std::filesystem::remove(entry.path(), ec);
+        (void) asp::fs::remove(entry.path);
     }
 
     // Check if there is a binary that we need to move over from the unzipped binaries dir
@@ -1010,21 +1082,23 @@ Result<> Loader::Impl::unzipGeodeFile(ModMetadata metadata) {
         // auto src = dirs::getModBinariesDir() / metadata.getBinaryName();
         auto src = dirs::getModRuntimeDir() / "binaries" / metadata.getBinaryName();
         auto dst = tempDir / metadata.getBinaryName();
-        if (std::filesystem::exists(src)) {
-            std::error_code ec;
-            std::filesystem::rename(src, dst, ec);
-            if (ec) {
-                auto message = formatSystemError(ec.value());
+        if (src.exists()) {
+            if (auto e = asp::fs::move(src, dst).err()) {
                 return Err(fmt::format("Failed to move binary from {} to {}: {}",
-                    src, dst, message
+                    src, dst, *e
                 ));
             }
         }
     }
 
-    auto res = file::writeString(datePath, modifiedHash);
+    auto res = file::writeString(resDatePath, modifiedHash);
     if (!res) {
-        log::warn("Failed to write modified date of geode zip, will try to unzip next launch: {}", res.unwrapErr());
+        log::warn("Failed to write modified date of geode resources, will try to unzip next launch: {}", res.unwrapErr());
+    }
+
+    auto res2 = file::writeString(datePath, modifiedHash);
+    if (!res2) {
+        log::warn("Failed to write modified date of geode zip, will try to unzip next launch: {}", res2.unwrapErr());
     }
 
     return Ok();
@@ -1038,14 +1112,14 @@ Result<> Loader::Impl::extractBinary(ModMetadata metadata) {
 
     // Extract the binary from the .geode file
     GEODE_UNWRAP_INTO(auto unzip, file::Unzip::create(metadata.getPath()));
-    if (!unzip.hasEntry(metadata.getBinaryName())) {
+    if (!unzip.hasEntry(metadata.getBinaryName().view())) {
         return Err(
             fmt::format("Unable to find platform binary under the name \"{}\"", metadata.getBinaryName())
         );
     }
     // TODO: enable in 4.7.0
     // GEODE_UNWRAP(unzip.extractTo(metadata.getBinaryName(), dirs::getModBinariesDir() / metadata.getBinaryName()));
-    GEODE_UNWRAP(unzip.extractTo(metadata.getBinaryName(), dirs::getModRuntimeDir() / "binaries" / metadata.getBinaryName()));
+    GEODE_UNWRAP(unzip.extractTo(metadata.getBinaryName().view(), dirs::getModRuntimeDir() / "binaries" / metadata.getBinaryName()));
 
     return Ok();
 }
@@ -1160,7 +1234,7 @@ std::vector<std::string> Loader::Impl::getLaunchArgumentNames() const {
 }
 
 bool Loader::Impl::hasLaunchArgument(std::string_view name) const {
-    return m_launchArgs.find(name) != m_launchArgs.end();
+    return m_launchArgs.contains(name);
 }
 
 std::optional<std::string> Loader::Impl::getLaunchArgument(std::string_view name) const {
@@ -1176,15 +1250,15 @@ bool Loader::Impl::getLaunchFlag(std::string_view name) const {
     return arg.has_value() && arg.value() == "true";
 }
 
-Result<tulip::hook::HandlerHandle> Loader::Impl::getHandler(void* address) {
-    if (!m_handlerHandles.count(address)) {
-        return Err("Handler does not exist at address");
+tulip::hook::Result<tulip::hook::HandlerHandle> Loader::Impl::getHandler(void* address) {
+    if (!m_handlerHandles.contains(address)) {
+        return Err(tulip::hook::Error::HandlerNotFound);
     }
     return Ok(m_handlerHandles[address].first);
 }
 
-Result<tulip::hook::HandlerHandle> Loader::Impl::getOrCreateHandler(void* address, tulip::hook::HandlerMetadata const& metadata) {
-    if (m_handlerHandles.count(address) && m_handlerHandles[address].second > 0) {
+tulip::hook::Result<tulip::hook::HandlerHandle> Loader::Impl::getOrCreateHandler(void* address, tulip::hook::HandlerMetadata const& metadata) {
+    if (m_handlerHandles.contains(address) && m_handlerHandles[address].second > 0) {
         m_handlerHandles[address].second++;
         return Ok(m_handlerHandles[address].first);
     }
@@ -1196,18 +1270,18 @@ Result<tulip::hook::HandlerHandle> Loader::Impl::getOrCreateHandler(void* addres
     return Ok(handle);
 }
 
-Result<tulip::hook::HandlerHandle> Loader::Impl::getAndDecreaseHandler(void* address) {
-    if (!m_handlerHandles.count(address)) {
-        return Err("Handler does not exist at address");
+tulip::hook::Result<tulip::hook::HandlerHandle> Loader::Impl::getAndDecreaseHandler(void* address) {
+    if (!m_handlerHandles.contains(address)) {
+        return Err(tulip::hook::Error::HandlerNotFound);
     }
     auto handle = m_handlerHandles[address].first;
     m_handlerHandles[address].second--;
     return Ok(handle);
 }
 
-Result<> Loader::Impl::removeHandlerIfNeeded(void* address) {
-    if (!m_handlerHandles.count(address)) {
-        return Err("Handler does not exist at address");
+tulip::hook::Result<> Loader::Impl::removeHandlerIfNeeded(void* address) {
+    if (!m_handlerHandles.contains(address)) {
+        return Err(tulip::hook::Error::HandlerNotFound);
     }
     auto handle = m_handlerHandles[address].first;
     if (m_handlerHandles[address].second == 0) {
@@ -1224,7 +1298,7 @@ void Loader::Impl::forceSafeMode() {
     m_forceSafeMode = true;
 }
 
-void Loader::Impl::installModManuallyFromFile(std::filesystem::path const& path, geode::Function<void()> after) {
+void Loader::Impl::installModManuallyFromFile(asp::fs::PathView path, geode::Function<void()> after) {
     auto meta = ModMetadata::createFromGeodeFile(path);
     if (meta.hasErrors()) {
         for (auto const& error : meta.getErrors()) {
@@ -1255,15 +1329,13 @@ void Loader::Impl::installModManuallyFromFile(std::filesystem::path const& path,
         )->show();
     }
 
-    auto doInstallModFromFile = [this, path, meta, after = std::move(after)]() mutable {
-        std::error_code ec;
-
+    auto doInstallModFromFile = [this, path = path.toPath(), meta, after = std::move(after)]() mutable {
         static size_t MAX_ATTEMPTS = 10;
 
         // Figure out a free path to install to
         auto installTo = dirs::getModsDir() / fmt::format("{}.geode", meta.getID());
         size_t counter = 0;
-        while (std::filesystem::exists(installTo, ec) && counter < MAX_ATTEMPTS) {
+        while (installTo.exists() && counter < MAX_ATTEMPTS) {
             installTo = dirs::getModsDir() / fmt::format("{}-{}.geode", meta.getID(), counter);
             counter += 1;
         }
@@ -1282,14 +1354,10 @@ void Loader::Impl::installModManuallyFromFile(std::filesystem::path const& path,
         }
 
         // Actually copy the file over to the install directory
-        std::filesystem::copy_file(path, installTo, ec);
-        if (ec) {
+        if (auto e = asp::fs::copy(path, installTo).err()) {
             FLAlertLayer::create(
                 "Unable to Install",
-                fmt::format(
-                    "Unable to install mod <co>{}</c>: {} (Error code <cr>{}</c>)",
-                    meta.getID(), ec.message(), ec.value()
-                ),
+                fmt::format("Unable to install mod <co>{}</c>: {}", meta.getID(), *e),
                 "OK"
             )->show();
             return;
@@ -1325,15 +1393,10 @@ void Loader::Impl::installModManuallyFromFile(std::filesystem::path const& path,
             "Keep", "Delete",
             [path](auto, bool btn2) {
                 if (btn2) {
-                    std::error_code ec;
-                    std::filesystem::remove(path, ec);
-                    if (ec) {
+                    if (auto e = asp::fs::remove(path).err()) {
                         FLAlertLayer::create(
                             "Unable to Delete",
-                            fmt::format(
-                                "Unable to delete <cy>{}</c>: {} (Error code <cr>{}</c>)",
-                                path, ec.message(), ec.value()
-                            ),
+                            fmt::format("Unable to delete <cy>{}</c>: {}", path, *e),
                             "OK"
                         )->show();
                     }
@@ -1357,23 +1420,18 @@ void Loader::Impl::installModManuallyFromFile(std::filesystem::path const& path,
                 existing->getVersion()
             ),
             "Cancel", "Replace",
-            [doInstallModFromFile = std::move(doInstallModFromFile), path, existing, meta](auto, bool btn2) mutable {
-                if (btn2) {
-                    std::error_code ec;
-                    std::filesystem::remove(existing->getPackagePath(), ec);
-                    if (ec) {
-                        FLAlertLayer::create(
-                            "Unable to Uninstall",
-                            fmt::format(
-                                "Unable to uninstall <cy>{}</c>: {} (Error code <cr>{}</c>)",
-                                existing->getID(), ec.message(), ec.value()
-                            ),
-                            "OK"
-                        )->show();
-                        return;
-                    }
-                    doInstallModFromFile();
+            [doInstallModFromFile = std::move(doInstallModFromFile), existing, meta](auto, bool btn2) mutable {
+                if (!btn2) return;
+
+                if (auto e = asp::fs::remove(existing->getPackagePath()).err()) {
+                    FLAlertLayer::create(
+                        "Unable to Uninstall",
+                        fmt::format("Unable to uninstall <cy>{}</c>: {}", existing->getID(), *e),
+                        "OK"
+                    )->show();
+                    return;
                 }
+                doInstallModFromFile();
             },
             true,
             false
@@ -1428,4 +1486,116 @@ void Loader::Impl::onKeybindSettingChanged(std::shared_ptr<KeybindSettingV3> set
             }), setting);
         }
     }
+}
+
+void Loader::Impl::setupActionIds(const Mod* mod) {
+    for (auto const& key : mod->getSettingKeys()) {
+        auto setting = typeinfo_pointer_cast<KeybindSettingV3>(mod->getSetting(key));
+        if (!setting) {
+            continue;
+        }
+
+        if (!m_keybindSettingToActionId.contains(setting.get())) {
+            auto getNextActionId = [this, &setting](int group, int& nextId) {
+                int actionId = nextId;
+
+                if ((actionId / 10000) > group) {
+                    actionId = m_nextMiscActionId;
+                    m_nextMiscActionId++;
+                    log::warn(
+                        "No free action IDs in group {} for {}:{}, using fallback {}",
+                        group,
+                        setting->getModID(),
+                        setting->getKey(),
+                        actionId
+                    );
+                }
+                else {
+                    nextId++;
+                }
+
+                return actionId;
+            };
+
+            KeybindCategory category = setting->getCategory().value_or(KeybindCategory::Universal);
+            int actionId = 0;
+
+            switch (category) {
+                case KeybindCategory::Universal:
+                    actionId =
+                        getNextActionId(static_cast<int>(GJActionGroup::Global), m_nextUniversalActionId);
+                    break;
+                case KeybindCategory::Gameplay:
+                    actionId =
+                        getNextActionId(static_cast<int>(GJActionGroup::Gameplay), m_nextGameplayActionId);
+                    break;
+                case KeybindCategory::Editor:
+                    actionId =
+                        getNextActionId(static_cast<int>(GJActionGroup::Editor), m_nextEditorActionId);
+                    break;
+            }
+
+            m_keybindSettingToActionId[setting.get()] = actionId;
+            m_actionIdToKeybindSetting[actionId] = setting;
+            m_actionIdToKeybindSettingName[actionId] = setting->getDisplayName();
+        }
+    }
+}
+
+std::shared_ptr<KeybindSettingV3> Loader::Impl::keybindSettingForActionId(int action) {
+    if (auto it = m_actionIdToKeybindSetting.find(action); it != m_actionIdToKeybindSetting.end()) {
+        return it->second;
+    }
+
+    return nullptr;
+}
+
+std::optional<ZStringView> Loader::Impl::keybindNameForActionId(int action) {
+    if (auto it = m_actionIdToKeybindSettingName.find(action);
+        it != m_actionIdToKeybindSettingName.end()) {
+        return it->second;
+    }
+
+    return std::nullopt;
+}
+
+int Loader::Impl::actionForKeybindSetting(KeybindSettingV3* setting) {
+    if (auto it = m_keybindSettingToActionId.find(setting); it != m_keybindSettingToActionId.end()) {
+        return it->second;
+    }
+
+    return 0;
+}
+
+std::vector<int> Loader::Impl::getActionsForKeybindCategory(std::optional<KeybindCategory> category) {
+    auto mods = this->getAllMods();
+    std::erase_if(mods, [](Mod* mod) {
+        return !mod->isLoaded();
+    });
+    std::ranges::sort(mods, [](Mod* a, Mod* b) {
+        auto order = utils::string::caseInsensitiveCompare(a->getName(), b->getName());
+        if (order != 0) {
+            return order < 0;
+        }
+        return a->getID() < b->getID();
+    });
+
+    std::vector<int> result;
+    for (auto* mod : mods) {
+        for (auto const& key : mod->getSettingKeys()) {
+            auto setting = typeinfo_pointer_cast<KeybindSettingV3>(mod->getSetting(key));
+            if (!setting) {
+                continue;
+            }
+            if (category && setting->getCategory() != category) {
+                continue;
+            }
+            int id = this->actionForKeybindSetting(setting.get());
+            if (id == 0) {
+                continue;
+            }
+            result.push_back(id);
+        }
+    }
+    return result;
 }

@@ -1,11 +1,26 @@
 #pragma once
 
+#include <Geode/loader/Event.hpp>
 #include <Geode/utils/ZStringView.hpp>
-#include <cocos2d.h>
+#include <Geode/cocos/base_nodes/CCNode.h>
+#include <Geode/cocos/touch_dispatcher/CCTouchDelegateProtocol.h>
+#include <Geode/cocos/actions/CCActionInterval.h>
+#include <Geode/cocos/actions/CCActionEase.h>
 
 namespace geode {
     class GEODE_DLL Button : public cocos2d::CCNodeRGBA, public cocos2d::CCTouchDelegate {
     public:
+
+        enum class ClickType {
+            Selected,
+            Activated,
+            Unselected
+        };
+
+        class ClickedEvent : public geode::GlobalEvent<ClickedEvent, bool(Button*, ClickType), bool(), Button*, ClickType> {
+            using GlobalEvent::GlobalEvent;
+        };
+
         using ButtonCallback = geode::Function<void(Button* sender)>;
 
         enum class AnimationType {
@@ -54,13 +69,18 @@ namespace geode {
          * @param font The font of the label
          * @param activateCallback The callback for when the button is activated
          */
-        static Button* createWithLabel(geode::ZStringView text, geode::ZStringView font, ButtonCallback activateCallback = nullptr);
+        static Button* createWithLabel(std::string text, geode::ZStringView font, ButtonCallback activateCallback = nullptr);
 
         /**
          * Get the Display Node, which was created or passed in on button creation
          * Will be nullptr if you use the empty create method
          */
         cocos2d::CCNode* getDisplayNode();
+
+        /**
+         * Set the Display Node, will change the current one to this
+         */
+        void setDisplayNode(CCNode* node);
 
         /**
          * Set an animation type, which dictates how the button moves or scales
@@ -97,13 +117,37 @@ namespace geode {
         void setUnselectCallback(ButtonCallback callback);
 
         /**
+         * Add a callback for when the button is activated
+         */
+        template <class Callback>
+        void addActivateCallback(ZStringView id, Callback&& callback, int priority = 0) {
+            addEventListener(id, Button::ClickedEvent(this, Button::ClickType::Activated), std::forward<Callback>(callback), priority);
+        }
+
+        /**
+         * Add a callback for when the button is selected
+         */
+        template <class Callback>
+        void addSelectCallback(ZStringView id, Callback&& callback, int priority = 0) {
+            addEventListener(id, Button::ClickedEvent(this, Button::ClickType::Selected), std::forward<Callback>(callback), priority);
+        }
+
+        /**
+         * Add a callback for when the button is unselected
+         */
+        template <class Callback>
+        void addUnselectCallback(ZStringView id, Callback&& callback, int priority = 0) {
+            addEventListener(id, Button::ClickedEvent(this, Button::ClickType::Unselected), std::forward<Callback>(callback), priority);
+        }
+
+        /**
          * Set the touch priority of the Button
          */
         void setTouchPriority(int priority);
         int getTouchPriority();
 
         /**
-         * Set the touch multiplier, which increases the distance from the 
+         * Set the touch multiplier, which increases the distance from the
          * center that the button can be pressed (default is 1)
          */
         void setTouchMultiplier(float multipler);
@@ -140,7 +184,21 @@ namespace geode {
          */
         virtual void setEnabled(bool enabled);
         virtual bool isEnabled();
-        
+
+        /**
+         * Set if the button swallows touches or not (default true)
+         */
+        void setSwallowTouches(bool swallow);
+        bool isSwallowingTouches();
+
+        /**
+         * Set the distance that must be dragged before the touch is cancelled.
+         * Useful for scroll layers in combination with swallow touches off.
+         * 0 = never cancel, default 0
+         */
+        void setDragCancelDistance(float distance);
+        float getDragCancelDistance();
+
         /**
          * Get the selected state of the button
          */
@@ -174,7 +232,7 @@ namespace geode {
         bool initWithNode(cocos2d::CCNode* node, ButtonCallback activateCallback);
         bool initWithSprite(geode::ZStringView fileName, ButtonCallback activateCallback);
         bool initWithSpriteFrameName(geode::ZStringView frameName, ButtonCallback activateCallback);
-        bool initWithLabel(geode::ZStringView text, geode::ZStringView font, ButtonCallback activateCallback);
+        bool initWithLabel(std::string text, geode::ZStringView font, ButtonCallback activateCallback);
 
     private:
         class Impl;
@@ -203,7 +261,7 @@ namespace geode {
          * Unregister a button (must be called in onExit)
          */
         void unregisterButton(Button* button);
-        
+
         /**
          * Pass moves from ccTouchMoved to all buttons sharing a parent
          */

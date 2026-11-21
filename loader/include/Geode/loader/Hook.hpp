@@ -11,6 +11,45 @@
 namespace geode {
     class Mod;
     class Loader;
+    class Patch;
+
+    struct HookError {
+        enum {
+            Unknown = -1,
+            TulipHookError = 0,
+            Overlaps,
+            AlreadyOwned,
+        };
+
+        decltype(Unknown) m_value = Unknown;
+        tulip::hook::Error m_error;
+        Patch* m_other = nullptr;
+
+        constexpr HookError() = default;
+        constexpr HookError(decltype(Unknown) value) : m_value(value) {}
+        constexpr HookError(tulip::hook::Error error) : m_value(TulipHookError), m_error(std::move(error)) {}
+        constexpr HookError(Patch* other) : m_value(Overlaps), m_other(other) {}
+        constexpr HookError& operator=(decltype(Unknown) value) {
+            m_value = value;
+            return *this;
+        }
+        constexpr decltype(Unknown) value() const {
+            return m_value;
+        }
+
+        GEODE_DLL std::string toString() const;
+        operator std::string() const {
+            return this->toString();
+        }
+    };
+
+    inline std::string format_as(HookError const& err) {
+        return err.toString();
+    }
+
+    inline std::ostream& operator<<(std::ostream& os, HookError const& err) {
+        return os << err.toString();
+    }
 
     class GEODE_DLL Hook final {
     private:
@@ -84,12 +123,12 @@ namespace geode {
          */
         [[nodiscard]] bool isEnabled() const;
 
-        Result<> enable();
+        Result<void, HookError> enable();
 
-        Result<> disable();
+        Result<void, HookError> disable();
 
-        Result<> toggle();
-        Result<> toggle(bool enable);
+        Result<void, HookError> toggle();
+        Result<void, HookError> toggle(bool enable);
 
         /**
         * Get whether the hook should be auto enabled or not.
@@ -144,6 +183,20 @@ namespace geode {
          * @param priority Priority
          */
         void setPriority(int32_t priority);
+
+        /**
+         * Get the name of the modify class this hook belongs to, or `std::nullopt` if unavailable.
+         * This is the final, user-specified (or auto generated) name of the modify class, not the name of the modified class.
+         * This will not work for manual hooks or hooks in mods compiled with an older version of Geode.
+         * @returns Name of the modify class this hook belongs to
+         */
+        std::optional<std::string_view> getModifyClassName() const;
+
+        /**
+         * Set the name of the modify class this hook belongs to.
+         * For internal usage only.
+         */
+        void setModifyClassName(std::string name);
     };
 
     class GEODE_DLL Patch final {
@@ -175,12 +228,12 @@ namespace geode {
          */
         [[nodiscard]] bool isEnabled() const;
 
-        Result<> enable();
+        Result<void, HookError> enable();
 
-        Result<> disable();
+        Result<void, HookError> disable();
 
-        Result<> toggle();
-        Result<> toggle(bool enable);
+        Result<void, HookError> toggle();
+        Result<void, HookError> toggle(bool enable);
 
         /**
         * Get whether the patch should be auto enabled or not.
@@ -204,7 +257,7 @@ namespace geode {
          * Updates the bytes of the patch, disabling and then re-enabling if needed.
          * @param bytes Bytes used to patch
          */
-        Result<> updateBytes(ByteSpan bytes);
+        Result<void, HookError> updateBytes(ByteSpan bytes);
 
         /**
          * Get the address of the patch.

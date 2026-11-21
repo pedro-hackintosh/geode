@@ -8,6 +8,7 @@
 #include "../loader/Event.hpp"
 #include <Geode/cocos/platform/android/jni/JniHelper.h>
 #include <Geode/Result.hpp>
+#include <variant>
 
 namespace geode {
     namespace utils {
@@ -36,12 +37,16 @@ namespace geode {
     protected:
         float m_scrollX;
         float m_scrollY;
+        float m_mouseX;
+        float m_mouseY;
 
     public:
-        AndroidScrollInput(float scrollX, float scrollY);
+        AndroidScrollInput(float scrollX, float scrollY, float mouseX, float mouseY);
 
         float scrollX() const;
         float scrollY() const;
+        float mouseX() const;
+        float mouseY() const;
     };
 
     class GEODE_DLL AndroidTouchInput final {
@@ -100,7 +105,7 @@ namespace geode {
      *
      * If an event is stopped by a listener, the corresponding event within Cocos will not be triggered.
      */
-    class AndroidRichInputEvent final : public Event<AndroidRichInputEvent, bool(int64_t, int, int, AndroidRichInput)> {
+    class AndroidRichInputEvent final : public Event<AndroidRichInputEvent, bool(int64_t timestamp, int deviceID, int eventSource, AndroidRichInput data)> {
     public:
         // listener params timestamp, deviceID, eventSource, data
         using Event::Event;
@@ -111,7 +116,7 @@ namespace geode {
     };
 
     /** Event that represents some change in input devices, namely removal/addition. */
-    class AndroidInputDeviceEvent final : public Event<AndroidInputDeviceEvent, bool(int, AndroidInputDeviceStatus)> {
+    class AndroidInputDeviceEvent final : public Event<AndroidInputDeviceEvent, bool(int deviceID, AndroidInputDeviceStatus status)> {
     public:
         // listener params deviceID, status
         using Event::Event;

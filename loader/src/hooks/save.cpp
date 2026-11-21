@@ -10,13 +10,11 @@ namespace {
         log::info("Saving mod data...");
         log::NestScope nest;
 
-        auto begin = std::chrono::high_resolution_clock::now();
+        auto begin = asp::Instant::now();
 
-        (void)Loader::get()->saveData();
+        Loader::get()->saveData();
 
-        auto end = std::chrono::high_resolution_clock::now();
-        auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        log::info("Took {}s", static_cast<float>(time) / 1000.f);
+        log::debug("Took {}", begin.elapsed());
     }
 }
 
@@ -47,8 +45,8 @@ struct FallbackSaveLoader : Modify<FallbackSaveLoader, CCApplication> {
 
 // redirects the save path to what geode knows, in case launcher's fopen hook fails
 struct FileOperationOverride : Modify<FileOperationOverride, FileOperation> {
-    static gd::string getFilePath() {
-        return utils::string::pathToString(dirs::getSaveDir()) + "/";
+    static std::string getFilePath() {
+        return dirs::getSaveDir().string() + "/";
     }
 };
 

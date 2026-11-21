@@ -84,7 +84,7 @@ namespace geode {
             : native(native), timestamp(timestamp), key(key), action(action), modifiers(mods) {}
     };
 
-    struct KeyboardInputEvent final : GlobalEvent<KeyboardInputEvent, bool(KeyboardInputData&), cocos2d::enumKeyCodes> {
+    struct KeyboardInputEvent final : GlobalEvent<KeyboardInputEvent, bool(KeyboardInputData& data), void(cocos2d::enumKeyCodes key)> {
         using GlobalEvent::GlobalEvent;
     };
 
@@ -125,15 +125,15 @@ namespace geode {
             : timestamp(timestamp), button(button), action(action), modifiers(mods) {}
     };
 
-    struct MouseInputEvent final : Event<MouseInputEvent, bool(MouseInputData&)> {
+    struct MouseInputEvent final : Event<MouseInputEvent, bool(MouseInputData& data)> {
         using Event::Event;
     };
 
-    struct MouseMoveEvent final : Event<MouseMoveEvent, bool(int32_t, int32_t)> {
+    struct MouseMoveEvent final : Event<MouseMoveEvent, bool(int32_t x, int32_t y)> {
         using Event::Event;
     };
 
-    struct ScrollWheelEvent final : Event<MouseMoveEvent, bool(double, double)> {
+    struct ScrollWheelEvent final : Event<ScrollWheelEvent, bool(double xoff, double yoff)> {
         using Event::Event;
     };
 
@@ -142,11 +142,14 @@ namespace geode {
         KeyboardModifier modifiers = KeyboardModifier::None;
 
         Keybind() = default;
-        Keybind(cocos2d::enumKeyCodes key, KeyboardModifier modifiers) noexcept
-            : key(key), modifiers(modifiers) {}
 
+        Keybind(cocos2d::enumKeyCodes key, KeyboardModifier modifiers) noexcept :
+            key(key), modifiers(modifiers) {}
+
+        static GEODE_DLL Keybind fromVanillaChord(int chord);
         static GEODE_DLL Result<Keybind> fromString(std::string_view str);
         GEODE_DLL std::string toString() const;
+        GEODE_DLL std::optional<int> toVanillaChord() const;
         GEODE_DLL cocos2d::CCNode* createNode() const;
 
         bool operator==(Keybind const& other) const noexcept {

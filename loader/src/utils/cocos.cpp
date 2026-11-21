@@ -1,8 +1,14 @@
+#include <Geode/cocos/CCDirector.h>
+#include <Geode/cocos/platform/CCEGLView.h>
+#include <Geode/cocos/layers_scenes_transitions_nodes/CCTransition.h>
+#include <Geode/cocos/platform/CCFileUtils.h>
+#include <Geode/cocos/textures/CCTextureCache.h>
+#include <Geode/cocos/touch_dispatcher/CCTouchHandler.h>
 #include <Geode/modify/LoadingLayer.hpp>
 #include <Geode/utils/cocos.hpp>
-#include <matjson.hpp>
 #include <Geode/binding/CCTextInputNode.hpp>
 #include <Geode/binding/GameManager.hpp>
+#include <matjson.hpp>
 
 #ifdef GEODE_IS_WINDOWS
 #else
@@ -258,6 +264,12 @@ std::string geode::cocos::cc4bToHexString(ccColor4B const& color) {
     return output;
 }
 
+cocos2d::CCPoint geode::cocos::getMousePos() {
+    auto pos = CCEGLView::get()->getMousePosition();
+    pos.y = CCDirector::get()->getWinSize().height - pos.y;
+    return pos;
+}
+
 bool WeakRefController::isManaged() {
     WeakRefPool::get()->check(m_obj);
     return m_obj;
@@ -278,6 +290,9 @@ WeakRefPool* WeakRefPool::get() {
     static auto inst = new WeakRefPool();
     return inst;
 }
+
+WeakRefPool::WeakRefPool() = default;
+WeakRefPool::~WeakRefPool() = default;
 
 void WeakRefPool::check(CCObject* obj) {
     // if this object's only reference is the WeakRefPool aka only weak
@@ -342,10 +357,29 @@ bool geode::cocos::isSpriteFrameName(CCNode* node, const char* name) {
     return false;
 }
 
-CCNode* geode::cocos::getChildBySpriteFrameName(CCNode* parent, const char* name) {
-    for (auto child : CCArrayExt<CCNode*>(parent->getChildren())) {
-        if (::isSpriteFrameName(static_cast<CCNode*>(child), name)) {
-            return child;
+CCNode* geode::cocos::getChildBySpriteFrameName(CCNode* parent, const char* name, int index) {
+    size_t indexCounter = 0;
+    if (parent->getChildrenCount() == 0) return nullptr;
+    if (index < 0) {
+        index = -index - 1;
+        for (size_t i = parent->getChildrenCount() - 1;; i--) {
+            auto obj = geode::cast::typeinfo_cast<CCNode*>(parent->getChildren()->objectAtIndex(i));
+            if (obj != nullptr && isSpriteFrameName(obj, name)) {
+                if (indexCounter == index) {
+                    return obj;
+                }
+                ++indexCounter;
+            }
+            if (i == 0) break;
+        }
+    } else {
+        for (auto child : CCArrayExt<CCNode*>(parent->getChildren())) {
+            if (isSpriteFrameName(child, name)) {
+                if (indexCounter == index) {
+                    return child;
+                }
+                ++indexCounter;
+            }
         }
     }
     return nullptr;
@@ -373,10 +407,29 @@ bool geode::cocos::isSpriteName(CCNode* node, const char* name) {
     return false;
 }
 
-CCNode* geode::cocos::getChildBySpriteName(CCNode* parent, const char* name) {
-    for (auto child : CCArrayExt<CCNode*>(parent->getChildren())) {
-        if (::isSpriteName(static_cast<CCNode*>(child), name)) {
-            return child;
+CCNode* geode::cocos::getChildBySpriteName(CCNode* parent, const char* name, int index) {
+    size_t indexCounter = 0;
+    if (parent->getChildrenCount() == 0) return nullptr;
+    if (index < 0) {
+        index = -index - 1;
+        for (size_t i = parent->getChildrenCount() - 1;; i--) {
+            auto obj = geode::cast::typeinfo_cast<CCNode*>(parent->getChildren()->objectAtIndex(i));
+            if (obj != nullptr && isSpriteName(obj, name)) {
+                if (indexCounter == index) {
+                    return obj;
+                }
+                ++indexCounter;
+            }
+            if (i == 0) break;
+        }
+    } else {
+        for (auto child : CCArrayExt<CCNode*>(parent->getChildren())) {
+            if (isSpriteName(child, name)) {
+                if (indexCounter == index) {
+                    return child;
+                }
+                ++indexCounter;
+            }
         }
     }
     return nullptr;
@@ -557,17 +610,45 @@ bool geode::cocos::fileExistsInSearchPaths(char const* filename) {
     return utils->isFileExist(utils->fullPathForFilename(filename, false));
 }
 
-CCScene* geode::cocos::switchToScene(CCLayer* layer) {
+CCScene* geode::cocos::switchToScene(CCLayer* layer, bool replace) {
     auto scene = CCScene::create();
     scene->addChild(layer);
-    CCDirector::get()->replaceScene(CCTransitionFade::create(.5f, scene));
+    return switchToScene(scene, replace);
+}
+
+CCScene* geode::cocos::switchToScene(CCScene* scene, bool replace) {
+    if (replace) {
+        CCDirector::get()->replaceScene(CCTransitionFade::create(.5f, scene));
+    } else {
+        CCDirector::get()->pushScene(CCTransitionFade::create(.5f, scene));
+    }
     return scene;
 }
 
-static CreateLayerFunc LOADING_FINISHED_SCENE = nullptr;
+static CreateLayerFunc LOADING_FINISHED_LAYER = nullptr;
+static CreateSceneFunc LOADING_FINISHED_SCENE = nullptr;
 
 void geode::cocos::reloadTextures(CreateLayerFunc returnTo) {
-    // TODO V6 ? : make this take a scene?
+    LOADING_FINISHED_LAYER = std::move(returnTo);
+    LOADING_FINISHED_SCENE = []() -> cocos2d::CCScene* {
+        if (!LOADING_FINISHED_LAYER) {
+            return nullptr;
+        }
+
+        auto layer = LOADING_FINISHED_LAYER();
+        if (!layer) {
+            return nullptr;
+        }
+        LOADING_FINISHED_LAYER = nullptr;
+
+        auto scene = CCScene::create();
+        scene->addChild(layer);
+        return scene;
+    };
+    GameManager::get()->reloadAll(false, false, false, false, true);
+}
+
+void geode::cocos::reloadTextures(CreateSceneFunc returnTo) {
     LOADING_FINISHED_SCENE = std::move(returnTo);
     GameManager::get()->reloadAll(false, false, false, false, true);
 }
@@ -621,13 +702,11 @@ struct LoadingFinished : Modify<LoadingFinished, LoadingLayer> {
             return LoadingLayer::loadAssets();
         }
         // Create custom layer
-        auto layer = LOADING_FINISHED_SCENE();
+        auto scene = LOADING_FINISHED_SCENE();
         // If failed, default behaviour
-        if (!layer) {
+        if (!scene) {
             return LoadingLayer::loadAssets();
         }
-        auto scene = CCScene::create();
-        scene->addChild(layer);
         // TODO: readd this
         // AppDelegate::get()->m_runningScene = scene;
         CCDirector::get()->replaceScene(scene);

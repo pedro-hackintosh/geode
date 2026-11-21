@@ -1,17 +1,19 @@
+#include "GeodeStyle.hpp"
 #include "mods/ModsLayer.hpp"
+#include "mods/popups/ModPopup.hpp"
+#include "mods/settings/KeybindsPopup.hpp"
+#include "mods/settings/ModSettingsPopup.hpp"
+
 #include <Geode/cocos/base_nodes/CCNode.h>
 #include <Geode/loader/Dirs.hpp>
 #include <Geode/ui/GeodeUI.hpp>
-#include <Geode/ui/MDPopup.hpp>
-#include <Geode/ui/LoadingSpinner.hpp>
+#include <Geode/ui/Label.hpp>
 #include <Geode/ui/LazySprite.hpp>
+#include <Geode/ui/LoadingSpinner.hpp>
+#include <Geode/ui/MDPopup.hpp>
 #include <Geode/utils/ColorProvider.hpp>
 #include <Geode/utils/web.hpp>
 #include <server/Server.hpp>
-#include "mods/GeodeStyle.hpp"
-#include "mods/settings/ModSettingsPopup.hpp"
-#include "mods/settings/KeybindsPopup.hpp"
-#include "mods/popups/ModPopup.hpp"
 
 class LoadServerModLayer : public Popup {
 protected:
@@ -29,7 +31,7 @@ protected:
     async::TaskHolder<Result<server::ServerModMetadata, server::ServerError>> m_listener;
     async::TaskHolder<Result<server::ServerModVersion, server::ServerError>> m_versionListener;
 
-    std::optional<server::ServerModMetadata> m_loadedMod{};
+    std::optional<server::ServerModMetadata> m_loadedMod;
 
     bool init(std::string id) {
         if (!Popup::init(180.f, 100.f, "square01_001.png"))
@@ -185,22 +187,18 @@ void geode::openSupportPopup(ModMetadata const& metadata) {
 void geode::openInfoPopup(Mod* mod) {
     ModPopup::create(mod)->show();
 }
-std::optional<arc::TaskHandle<bool>> geode::openInfoPopup(std::string modID) {
+
+std::optional<arc::TaskHandle<void>> geode::openInfoPopup(std::string modID) {
     if (auto mod = Loader::get()->getInstalledMod(modID)) {
         openInfoPopup(mod);
         return std::nullopt;
     }
 
     auto popup = LoadServerModLayer::create(std::move(modID));
-    return async::runtime().spawn([popup = Ref(popup)] -> arc::Future<bool> {
-        auto ret = co_await popup->listen();
+    return async::spawn(popup->listen(), [popup = Ref(popup)](bool ret) {
         if (ret) {
-            geode::queueInMainThread([popup] {
-                popup->show();
-            });
+            popup->show();
         }
-
-        co_return ret;
     });
 }
 
@@ -235,7 +233,7 @@ Popup* geode::openKeybindsPopup(std::optional<KeybindCategory> category, Mod* mo
     return popup;
 }
 
-using ModLogoSrc = std::variant<Mod*, std::string, std::filesystem::path>;
+using ModLogoSrc = std::variant<Mod*, std::string, asp::fs::Path>;
 
 class ModLogoSprite : public CCNodeRGBA {
 protected:
@@ -300,7 +298,7 @@ protected:
                     }
                 );
             },
-            [this](std::filesystem::path const& path) {
+            [this](asp::fs::Path const& path) {
                 m_sprite->setLoadCallback([this](Result<> res) {
                     this->onLoaded(std::move(res));
                 });
@@ -343,7 +341,7 @@ protected:
 
     void onLoadFailed(bool postEvent) {
         // Fallback to default logo if the image failed to load
-        auto sprite = CCLabelBMFont::create("N/A", "bigFont.fnt");
+        auto sprite = Label::create("N/A", "bigFont.fnt");
         sprite->setPosition(this->getScaledContentSize() / 2.f + CCSize{1.f, 2.f});
         sprite->setOpacity(90);
         limitNodeSize(sprite, m_obContentSize, 99.f, 0.f);
@@ -386,8 +384,8 @@ CCNode* geode::createModLogo(Mod* mod) {
     return ModLogoSprite::create(ModLogoSrc(mod));
 }
 
-CCNode* geode::createModLogo(std::filesystem::path const& geodePackage) {
-    return ModLogoSprite::create(ModLogoSrc(geodePackage));
+CCNode* geode::createModLogo(asp::fs::PathView geodePackage) {
+    return ModLogoSprite::create(ModLogoSrc(asp::fs::Path{geodePackage}));
 }
 
 CCNode* geode::createServerModLogo(std::string id) {

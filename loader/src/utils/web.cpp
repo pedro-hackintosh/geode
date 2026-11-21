@@ -1,17 +1,16 @@
 #include <Geode/loader/Log.hpp>
 #include <Geode/Result.hpp>
 #include <Geode/utils/general.hpp>
-#include <filesystem>
-#include <fmt/core.h>
-#include <fstream>
+#include <asp/fs/Path.hpp>
+#include <fmt/format.h>
 #include <matjson.hpp>
-#include <system_error>
 #define CURL_STATICLIB
 #include <Geode/loader/Mod.hpp>
 #include <Geode/utils/StringBuffer.hpp>
 #include <Geode/utils/file.hpp>
 #include <Geode/utils/map.hpp>
 #include <Geode/utils/string.hpp>
+#include <Geode/utils/random.hpp>
 #include <Geode/utils/terminate.hpp>
 #include <Geode/utils/web.hpp>
 #include <arc/future/Select.hpp>
@@ -26,7 +25,6 @@
 #include <asp/iter.hpp>
 #include <ca_bundle.h>
 #include <curl/curl.h>
-#include <sstream>
 
 #ifdef GEODE_IS_ANDROID
 # include <ares.h>
@@ -189,22 +187,11 @@ public:
     utils::StringMap<std::vector<std::string>> m_headers;
     RequestTimings m_timings;
 
-    Result<> into(std::filesystem::path const& path) const;
+    Result<> into(asp::fs::PathView path) const;
 };
 
-Result<> WebResponse::Impl::into(std::filesystem::path const& path) const {
-    // Test if there are no permission issues
-    std::error_code ec;
-    auto _ = std::filesystem::exists(path, ec);
-    if (ec) {
-        return Err(fmt::format("Couldn't write to file: {}", ec.category().message(ec.value())));
-    }
-
-    auto stream = std::ofstream(path, std::ios::out | std::ios::binary);
-    stream.write(reinterpret_cast<const char*>(m_data.data()), m_data.size());
-    stream.close();
-
-    return Ok();
+Result<> WebResponse::Impl::into(asp::fs::PathView path) const {
+    return utils::file::writeBinary(path, m_data);
 }
 
 struct MultipartFile {
@@ -215,8 +202,8 @@ struct MultipartFile {
 
 class MultipartForm::Impl {
 public:
-    std::unordered_map<std::string, std::string> m_params;
-    std::unordered_map<std::string, MultipartFile> m_files;
+    StringMap<std::string> m_params;
+    StringMap<MultipartFile> m_files;
     mutable std::string m_boundary;
 
     bool isBuilt() const {
@@ -226,16 +213,14 @@ public:
     bool isBoundaryUnique(std::string_view boundary) const {
         // make sure params and files don't contain the boundary
         for (auto const& [name, value] : m_params) {
-            if (name.find(boundary) != std::string::npos || value.find(boundary) != std::string::npos) {
+            if (name.contains(boundary) || value.contains(boundary)) {
                 return false;
             }
         }
 
         // check files
         for (auto const& [name, file] : m_files) {
-            if (name.find(boundary) != std::string::npos
-                || file.filename.find(boundary) != std::string::npos
-                || file.mime.find(boundary) != std::string::npos) {
+            if (name.contains(boundary) || file.filename.contains(boundary) || file.mime.contains(boundary)) {
                 return false;
             }
 
@@ -252,10 +237,7 @@ public:
             return;
         }
 
-        auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-        do {
-            m_boundary = fmt::format("----GeodeWebBoundary{}", timestamp++);
-        } while (!isBoundaryUnique(m_boundary));
+        m_boundary = fmt::format("----GeodeWebBoundary{}", random::generateUUID());
     }
 
     ByteVector getBody() const {
@@ -299,9 +281,9 @@ MultipartForm& MultipartForm::param(std::string name, std::string value) {
     return *this;
 }
 
-Result<MultipartForm&> MultipartForm::file(std::string name, std::filesystem::path const& path, std::string mime) {
+Result<MultipartForm&> MultipartForm::file(std::string name, asp::fs::PathView path, std::string mime) {
     if (!m_impl->isBuilt()) {
-        std::string filename = utils::string::pathToString(path.filename());
+        std::string filename = path.filename().value_or("").string();
 
         // according to mdn, filenames should be ascii
         for (unsigned char c : filename) {
@@ -321,7 +303,7 @@ Result<MultipartForm&> MultipartForm::file(std::string name, std::filesystem::pa
     return Ok(*this);
 }
 
-MultipartForm& MultipartForm::file(std::string name, std::span<uint8_t const> data, std::string filename, std::string mime) {
+MultipartForm& MultipartForm::file(std::string name, ByteSpan data, std::string filename, std::string mime) {
     if (!m_impl->isBuilt()) {
         m_impl->m_files.insert_or_assign(std::move(name), MultipartFile{
             .data = ByteVector(data.begin(), data.end()),
@@ -389,7 +371,7 @@ ByteVector WebResponse::data() && {
     return std::move(m_impl->m_data);
 }
 
-Result<> WebResponse::into(std::filesystem::path const& path) const {
+Result<> WebResponse::into(asp::fs::PathView path) const {
     return m_impl->into(path);
 }
 
@@ -431,7 +413,7 @@ private:
     Impl* m_impl;
 
     WebRequestsManager();
-    ~WebRequestsManager();
+    ~WebRequestsManager() = default; // leaking m_impl on purpose to avoid destruction order issues
 
 public:
     static WebRequestsManager* get();
@@ -559,7 +541,20 @@ public:
         using ResponseData = WebRequestsManager::RequestData;
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, requestData);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](char* data, size_t size, size_t nmemb, void* ptr) {
-            auto& target = static_cast<ResponseData*>(ptr)->response.m_impl->m_data;
+            auto* rd = static_cast<ResponseData*>(ptr);
+            auto& target = rd->response.m_impl->m_data;
+
+            // pre-allocate space to avoid reallocations
+            // cap at 512MB so a bad content-length header doesn't cause an instant oom
+            auto total = std::min<size_t>(
+                rd->request->m_downloadTotal.load(std::memory_order::relaxed),
+                1024ULL * 1024 * 512
+            );
+
+            if (total > target.capacity()) {
+                target.reserve(total);
+            }
+
             target.insert(target.end(), data, data + size * nmemb);
             return size * nmemb;
         });
@@ -586,7 +581,7 @@ public:
 
         // Add parameters to the URL and pass it to curl
         StringBuffer<> urlBuffer{m_url};
-        bool first = m_url.find('?') == std::string::npos;
+        bool first = !m_url.contains('?');
 
         for (auto& [key, value] : m_urlParameters) {
             urlBuffer.append(first ? '?' : '&');
@@ -609,9 +604,15 @@ public:
         // don't use it by default but allow it to be enabled with a launch flag
         auto useHttp3 = Loader::get()->getLaunchFlag("use-http3");
         if (m_httpVersion == HttpVersion::DEFAULT && useHttp3) {
-            auto cachePath = pathToString(Mod::get()->getSaveDir() / "altsvc_cache.txt");
+            auto cachePath = Mod::get()->getSaveDir() / "altsvc_cache.txt";
             curl_easy_setopt(curl, CURLOPT_ALTSVC_CTRL, CURLALTSVC_H3);
             curl_easy_setopt(curl, CURLOPT_ALTSVC, cachePath.c_str());
+        }
+
+        // ECH is experimental in curl and not considered entirely stable, we use it by default but allow it to be disabled
+        auto disableEch = Loader::get()->getLaunchFlag("disable-ech");
+        if (disableEch) {
+            curl_easy_setopt(curl, CURLOPT_ECH, "true"); // use ECH if possible; proceed without when not
         }
 
         // Set request method
@@ -711,6 +712,10 @@ public:
         // always set connection timeout to avoid hanging indefinitely (2.5 seconds)
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 2500L);
 
+        // Set a larger buffer size to try and help reduce read/write, default is 16kb but we bump it up to 256kb
+        // This buffer will be shared across all connections, so a larger number is ok
+        curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 256 * 1024L);
+
         // Set range
         if (m_range) {
             curl_easy_setopt(curl, CURLOPT_RANGE, fmt::format("{}-{}", m_range->first, m_range->second).c_str());
@@ -809,9 +814,9 @@ public:
         curl_easy_setopt(curl, CURLOPT_HEADERDATA, requestData);
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, (+[](char* buffer, size_t size, size_t nitems, void* ptr) {
             auto& headers = static_cast<ResponseData*>(ptr)->response.m_impl->m_headers;
-            std::string line;
-            std::stringstream ss(std::string(buffer, size * nitems));
-            while (std::getline(ss, line)) {
+
+            auto hdrs = std::string_view(buffer, size * nitems);
+            for (auto line : asp::iter::lines(hdrs)) {
                 auto colon = line.find(':');
                 if (colon == std::string::npos) continue;
 
@@ -950,7 +955,7 @@ WebRequest& WebRequest::header(std::string name, std::string value) {
                 timeoutValue = res.unwrap();
             }
 
-            timeout(std::chrono::seconds(timeoutValue));
+            timeout(asp::Duration::fromSecs(timeoutValue));
 
             return *this;
         }
@@ -1003,8 +1008,8 @@ WebRequest& WebRequest::userAgent(std::string name) {
     return *this;
 }
 
-WebRequest& WebRequest::timeout(std::chrono::seconds time) {
-    m_impl->m_timeout = asp::Duration::fromSecs(time.count());
+WebRequest& WebRequest::timeout(asp::Duration time) {
+    m_impl->m_timeout = time;
     return *this;
 }
 
@@ -1017,6 +1022,7 @@ WebRequest& WebRequest::certVerification(bool enabled) {
     m_impl->m_certVerification = enabled;
     return *this;
 }
+
 WebRequest& WebRequest::transferBody(bool enabled) {
     m_impl->m_transferBody = enabled;
     return *this;
@@ -1097,19 +1103,24 @@ utils::StringMap<std::vector<std::string>> const& WebRequest::getHeaders() const
     return m_impl->m_headers;
 }
 
+std::optional<ZStringView> WebRequest::getUserAgent() const {
+    return m_impl->m_userAgent;
+}
+
 utils::StringMap<std::string> const& WebRequest::getUrlParams() const {
     return m_impl->m_urlParameters;
+}
+
+std::optional<ByteSpan> WebRequest::getBodyRef() const {
+    return m_impl->m_body;
 }
 
 std::optional<ByteVector> WebRequest::getBody() const {
     return m_impl->m_body;
 }
 
-std::optional<std::chrono::seconds> WebRequest::getTimeout() const {
-    if (m_impl->m_timeout) {
-        return std::chrono::seconds(m_impl->m_timeout->seconds());
-    }
-    return std::nullopt;
+std::optional<asp::Duration> WebRequest::getTimeout() const {
+    return m_impl->m_timeout;
 }
 
 HttpVersion WebRequest::getHttpVersion() const {
@@ -1588,7 +1599,6 @@ public:
 };
 
 WebRequestsManager::WebRequestsManager() : m_impl(new Impl()) {}
-WebRequestsManager::~WebRequestsManager() = default; // leaking m_impl on purpose to avoid destruction order issues
 
 WebRequestsManager* WebRequestsManager::get() {
     static WebRequestsManager instance;
@@ -1788,7 +1798,7 @@ arc::Future<> WebRequestsManager::Impl::dnsProbe() {
     auto custom = Mod::get()->getSettingValue<std::string_view>("curl-custom-dns3");
     if (!custom.empty()) {
         auto ips = asp::iter::split(custom, ',').filterMap([&](std::string_view s) {
-            return qsox::IpAddress::parse(std::string{s}).ok();
+            return qsox::IpAddress::parse(s).ok();
         }).collect();
 
         if (!ips.empty()) {

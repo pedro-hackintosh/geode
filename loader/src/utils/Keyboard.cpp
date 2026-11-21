@@ -1,5 +1,13 @@
+#include "Geode/utils/Keyboard.hpp"
+
+#include "Geode/cocos/robtop/keyboard_dispatcher/CCKeyboardDelegate.h"
+#include "KeyboardImpl.hpp"
+
 #include <Geode/loader/Mod.hpp>
+#include <Geode/ui/Label.hpp>
 #include <Geode/utils/StringMap.hpp>
+#include <Geode/platform/cplatform.h>
+#include <optional>
 
 using namespace geode::prelude;
 
@@ -118,6 +126,8 @@ StringMap<enumKeyCodes> keyNameToCode = {
     { "RightControl", KEY_RightControl },
     { "LeftMenu", KEY_LeftMenu },
     { "RightMenu", KEY_RightMenu },
+    { "LeftAlt", KEY_LeftMenu }, //duplicate definition to match toString() output
+    { "RightAlt", KEY_RightMenu }, //duplicate definition to match toString() output
     { "BrowserBack", KEY_BrowserBack },
     { "BrowserForward", KEY_BrowserForward },
     { "BrowserRefresh", KEY_BrowserRefresh },
@@ -148,6 +158,8 @@ StringMap<enumKeyCodes> keyNameToCode = {
     { "OEM6", KEY_OEM6 },
     { "OEM7", KEY_OEM7 },
     { "OEM8", KEY_OEM8 },
+    { "ABNT1", KEY_ABNT1 },
+    { "ABNT2", KEY_ABNT2 },
     { "OEM102", KEY_OEM102 },
     { "Process", KEY_Process },
     { "Packet", KEY_Packet },
@@ -164,27 +176,49 @@ StringMap<enumKeyCodes> keyNameToCode = {
     { "ArrowLeft", KEY_ArrowLeft },
     { "ArrowRight", KEY_ArrowRight },
     { "Controller_A", CONTROLLER_A },
+    { "Controller2_A", CONTROLLER2_A },
     { "Controller_B", CONTROLLER_B },
+    { "Controller2_B", CONTROLLER2_B },
     { "Controller_Y", CONTROLLER_Y },
+    { "Controller2_Y", CONTROLLER2_Y },
     { "Controller_X", CONTROLLER_X },
+    { "Controller2_X", CONTROLLER2_X },
     { "Controller_Start", CONTROLLER_Start },
+    { "Controller2_Start", CONTROLLER2_Start },
     { "Controller_Back", CONTROLLER_Back },
+    { "Controller2_Back", CONTROLLER2_Back },
     { "Controller_RB", CONTROLLER_RB },
+    { "Controller2_RB", CONTROLLER2_RB },
     { "Controller_LB", CONTROLLER_LB },
+    { "Controller2_LB", CONTROLLER2_LB },
     { "Controller_RT", CONTROLLER_RT },
+    { "Controller2_RT", CONTROLLER2_RT },
     { "Controller_LT", CONTROLLER_LT },
+    { "Controller2_LT", CONTROLLER2_LT },
     { "Controller_Up", CONTROLLER_Up },
+    { "Controller2_Up", CONTROLLER2_Up },
     { "Controller_Down", CONTROLLER_Down },
+    { "Controller2_Down", CONTROLLER2_Down },
     { "Controller_Left", CONTROLLER_Left },
+    { "Controller2_Left", CONTROLLER2_Left },
     { "Controller_Right", CONTROLLER_Right },
+    { "Controller2_Right", CONTROLLER2_Right },
     { "Controller_LTHUMBSTICK_UP", CONTROLLER_LTHUMBSTICK_UP },
+    { "Controller2_LTHUMBSTICK_UP", CONTROLLER2_LTHUMBSTICK_UP },
     { "Controller_LTHUMBSTICK_DOWN", CONTROLLER_LTHUMBSTICK_DOWN },
+    { "Controller2_LTHUMBSTICK_DOWN", CONTROLLER2_LTHUMBSTICK_DOWN },
     { "Controller_LTHUMBSTICK_LEFT", CONTROLLER_LTHUMBSTICK_LEFT },
+    { "Controller2_LTHUMBSTICK_LEFT", CONTROLLER2_LTHUMBSTICK_LEFT },
     { "Controller_LTHUMBSTICK_RIGHT", CONTROLLER_LTHUMBSTICK_RIGHT },
+    { "Controller2_LTHUMBSTICK_RIGHT", CONTROLLER2_LTHUMBSTICK_RIGHT },
     { "Controller_RTHUMBSTICK_UP", CONTROLLER_RTHUMBSTICK_UP },
+    { "Controller2_RTHUMBSTICK_UP", CONTROLLER2_RTHUMBSTICK_UP },
     { "Controller_RTHUMBSTICK_DOWN", CONTROLLER_RTHUMBSTICK_DOWN },
+    { "Controller2_RTHUMBSTICK_DOWN", CONTROLLER2_RTHUMBSTICK_DOWN },
     { "Controller_RTHUMBSTICK_LEFT", CONTROLLER_RTHUMBSTICK_LEFT },
+    { "Controller2_RTHUMBSTICK_LEFT", CONTROLLER2_RTHUMBSTICK_LEFT },
     { "Controller_RTHUMBSTICK_RIGHT", CONTROLLER_RTHUMBSTICK_RIGHT },
+    { "Controller2_RTHUMBSTICK_RIGHT", CONTROLLER2_RTHUMBSTICK_RIGHT },
     { "`", KEY_GraveAccent },
     { "=", KEY_OEMEqual },
     { "[", KEY_LeftBracket },
@@ -193,7 +227,8 @@ StringMap<enumKeyCodes> keyNameToCode = {
     { ";", KEY_Semicolon },
     { "'", KEY_Apostrophe },
     { "/", KEY_Slash },
-    { "=", KEY_NumEnter },
+    { "NumEqual", KEY_Equal },
+    { "NumEnter", KEY_NumEnter },
     { "INTL-1", KEY_World1 },
     { "INTL-2", KEY_World2 },
     { "Mouse 4", MOUSE_4 },
@@ -201,6 +236,10 @@ StringMap<enumKeyCodes> keyNameToCode = {
     { "Mouse 6", MOUSE_6 },
     { "Mouse 7", MOUSE_7 },
     { "Mouse 8", MOUSE_8 },
+    { "Controller_L3", CONTROLLER_L3 },
+    { "Controller2_L3", CONTROLLER2_L3 },
+    { "Controller_R3", CONTROLLER_R3 },
+    { "Controller2_R3", CONTROLLER2_R3 },
     { "None", KEY_None },
     { "Unknown", KEY_Unknown }
 };
@@ -233,7 +272,46 @@ Result<Keybind> Keybind::fromString(std::string_view str) {
     if (it == keyNameToCode.end()) {
         return Err(fmt::format("Invalid key '{}'", str));
     }
+
+    switch(it->second) {
+        case KEY_LeftShift:
+        case KEY_RightShift:
+            mods |= KeyboardModifier::Shift;
+            break;
+        case KEY_LeftControl:
+        case KEY_RightControl:
+            mods |= KeyboardModifier::Control;
+            break;
+        case KEY_LeftMenu:
+        case KEY_RightMenu:
+            mods |= KeyboardModifier::Alt;
+            break;
+        case KEY_LeftWindowsKey:
+        case KEY_RightWindowsKey:
+            mods |= KeyboardModifier::Super;
+            break;
+        default:
+            break;
+    }
+
     return Ok(Keybind(it->second, mods));
+}
+
+Keybind Keybind::fromVanillaChord(int chord) {
+    enumKeyCodes key = static_cast<enumKeyCodes>(chord & 0xffff);
+    KeyboardModifier mods = KeyboardModifier::None;
+
+    if (chord & 0x10000) {
+        mods |= KeyboardModifier::Control;
+    }
+    if (chord & 0x20000) {
+        mods |= KeyboardModifier::Alt;
+    }
+    if (chord & 0x40000) {
+        mods |= KeyboardModifier::Shift;
+    }
+
+    return Keybind(key, mods);
 }
 
 std::string Keybind::toString() const {
@@ -277,14 +355,48 @@ std::string Keybind::toString() const {
     return buf.str();
 }
 
-cocos2d::CCNode* Keybind::createNode() const {
-    // If this is not a controller bind, just return a label with the key name
-    if (key < CONTROLLER_A || key > CONTROLLER_RTHUMBSTICK_RIGHT) {
-        return CCLabelBMFont::create(this->toString().c_str(), "bigFont.fnt");
+std::optional<int> Keybind::toVanillaChord() const {
+    if (key == KEY_None) {
+        return std::nullopt;
+    }
+    if (modifiers & KeyboardModifier::Super) {
+        return std::nullopt;
     }
 
+    int chord = key & 0xffff;
+
+    // No modifiers for controller
+    if ((key >= CONTROLLER_A && key <= CONTROLLER2_RTHUMBSTICK_RIGHT) ||
+        (key >= CONTROLLER_L3 && key <= CONTROLLER2_R3)) {
+        return chord;
+    }
+
+    if (modifiers & KeyboardModifier::Control) {
+        chord |= 0x10000;
+    }
+    if (modifiers & KeyboardModifier::Alt) {
+        chord |= 0x20000;
+    }
+    if (modifiers & KeyboardModifier::Shift) {
+        chord |= 0x40000;
+    }
+
+    return chord;
+}
+
+cocos2d::CCNode* Keybind::createNode() const {
+    // If this is not a controller bind, just return a label with the key name
+    if ((key < CONTROLLER_A || key > CONTROLLER2_RTHUMBSTICK_RIGHT) && (key < CONTROLLER_L3 || key > CONTROLLER2_R3)) {
+        return Label::create(this->toString(), "bigFont.fnt");
+    }
+
+    auto isController2 = (key & 0x1) == 0x0;
+    auto virtualKey = isController2
+        ? static_cast<cocos2d::enumKeyCodes>(static_cast<int>(key) - 1)
+        : key;
+
     const char* sprite;
-    switch (key) {
+    switch (virtualKey) {
         case CONTROLLER_A: sprite = "controllerBtn_A_001.png"; break;
         case CONTROLLER_B: sprite = "controllerBtn_B_001.png"; break;
         case CONTROLLER_X: sprite = "controllerBtn_X_001.png"; break;
@@ -307,14 +419,16 @@ cocos2d::CCNode* Keybind::createNode() const {
         case CONTROLLER_RTHUMBSTICK_DOWN: sprite = "controllerBtn_RThumb_001.png"; break;
         case CONTROLLER_RTHUMBSTICK_LEFT: sprite = "controllerBtn_RThumb_001.png"; break;
         case CONTROLLER_RTHUMBSTICK_UP: sprite = "controllerBtn_RThumb_001.png"; break;
+        case CONTROLLER_L3: sprite = "controllerBtn_L3.png"_spr; break;
+        case CONTROLLER_R3: sprite = "controllerBtn_R3.png"_spr; break;
         default: sprite = nullptr;
     }
     if (!sprite) {
-        return CCLabelBMFont::create("Unknown", "bigFont.fnt");
+        return Label::create("Unknown", "bigFont.fnt");
     }
 
     auto spr = CCSprite::createWithSpriteFrameName(sprite);
-    switch (key) {
+    switch (virtualKey) {
         case CONTROLLER_LTHUMBSTICK_DOWN:
         case CONTROLLER_RTHUMBSTICK_DOWN: {
             auto arrow = CCSprite::createWithSpriteFrameName("PBtn_Arrow_001.png");
@@ -354,7 +468,42 @@ cocos2d::CCNode* Keybind::createNode() const {
             break;
         }
     }
+
+    if (isController2) {
+        auto indicator = Label::create("(2)", "bigFont.fnt");
+        indicator->setPosition(ccp(31.f, 31.f));
+        indicator->setScale(0.4f);
+        indicator->setOpacity(127);
+        spr->addChild(indicator);
+
+        spr->setContentSize(spr->getContentSize() + cocos2d::CCSize { 10.0f, 10.0f });
+    }
+
     return spr;
+}
+
+// GD didn't support these until 2.209, and Geode provided them
+enumKeyCodes geode::migrateOldKeyCode(int code) {
+    switch (code) {
+        case 0x1000: return KEY_GraveAccent;
+        case 0x1001: return KEY_OEMEqual;
+        case 0x1002: return KEY_LeftBracket;
+        case 0x1003: return KEY_RightBracket;
+        case 0x1004: return KEY_Backslash;
+        case 0x1005: return KEY_Semicolon;
+        case 0x1006: return KEY_Apostrophe;
+        case 0x1007: return KEY_Slash;
+        case 0x100A: return KEY_World1;
+        // KEY_OEMPlus used to be 0xB8, which was only used for the plus key on
+        // android and numpad plus on mac/ios
+        case 0xB8:
+        #ifdef GEODE_IS_ANDROID
+            return KEY_OEMPlus;
+        #else
+            return KEY_Add;
+        #endif
+        default: return static_cast<enumKeyCodes>(code);
+    }
 }
 
 Result<Keybind> matjson::Serialize<geode::Keybind>::fromJson(matjson::Value const& json) {
@@ -362,7 +511,7 @@ Result<Keybind> matjson::Serialize<geode::Keybind>::fromJson(matjson::Value cons
         return Err("Expected object for Keybind");
     }
     return Ok(Keybind(
-        static_cast<enumKeyCodes>(json["key"].asInt().unwrapOr(0)),
+        migrateOldKeyCode(json["key"].asInt().unwrapOr(0)),
         static_cast<KeyboardModifier>(json["modifiers"].asInt().unwrapOr(0))
     ));
 }
