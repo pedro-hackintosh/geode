@@ -95,8 +95,10 @@ bool Loader::Impl::isModVersionSupported(VersionInfo const& target) {
 
 bool Loader::Impl::isForwardCompatMode() {
     if (!m_forwardCompatMode.has_value()) {
-        m_forwardCompatMode = !this->getGameVersion().empty() &&
-            this->getGameVersion() != GEODE_STR(GEODE_GD_VERSION);
+        auto ver = this->getGameVersion();
+        m_forwardCompatMode = !ver.empty() &&
+            ver != GEODE_STR(GEODE_GD_VERSION) &&
+            ver != "2.209";
     }
     return m_forwardCompatMode.value();
 }

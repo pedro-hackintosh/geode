@@ -681,7 +681,7 @@ Result<> ModMetadata::checkGameVersion() const {
             if (modTargetVer <= GEODE_GD_VERSION) {
                 return Err(fmt::format("This mod doesn't support this version of Geometry Dash ({})", ver));
             }
-        } else if (ver != GEODE_STR(GEODE_GD_VERSION)) {
+        } else if (ver != GEODE_STR(GEODE_GD_VERSION) && !(ver == "2.209" && std::string_view(GEODE_STR(GEODE_GD_VERSION)) == "2.2091")) {
             // we are not in forward compat mode, so GEODE_GD_VERSION is the current gd version
             return Err(
                 fmt::format(

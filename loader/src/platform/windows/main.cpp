@@ -178,7 +178,7 @@ int WINAPI gdMainHook(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmd
     fixCurrentWorkingDirectory();
 
     if (!cleanModeCheck()) {
-        if (versionToTimestamp(GEODE_STR(GEODE_GD_VERSION)) > gdTimestamp) {
+        if (versionToTimestamp("2.209") > gdTimestamp) {
             console::messageBox(
                 "Unable to Load Geode!",
                 fmt::format(

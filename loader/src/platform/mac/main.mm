@@ -145,7 +145,8 @@ bool cleanModeCheck() {
 bool loadGeode() {
     if (cleanModeCheck()) return false;
 
-    if (GEODE_STR(GEODE_GD_VERSION) != LoaderImpl::get()->getGameVersion()) {
+    auto gameVer = LoaderImpl::get()->getGameVersion();
+    if (GEODE_STR(GEODE_GD_VERSION) != gameVer && !(std::string_view(GEODE_STR(GEODE_GD_VERSION)) == "2.2091" && gameVer == "2.209")) {
         console::messageBox(
             "Unable to Load Geode!",
             fmt::format(
