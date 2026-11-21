@@ -260,7 +260,11 @@ if (WIN32)
 	# When building debug/rwdi, lld defaults to 0 code elimination, preserving all functions in the binary
 	# This is very rarely wanted, so force /OPT:REF to eliminate unused functions
 	if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-		target_link_options(${PROJECT_NAME} INTERFACE "-Wl,/OPT:REF")
+		if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
+			target_link_options(${PROJECT_NAME} INTERFACE "-Wl,/OPT:REF")
+		else()
+			target_link_options(${PROJECT_NAME} INTERFACE "/OPT:REF")
+		endif()
 	endif()
 endif()
 
