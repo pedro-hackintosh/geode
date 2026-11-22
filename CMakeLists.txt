@@ -360,6 +360,21 @@ if (DEFINED GEODE_TULIPHOOK_REPO_PATH)
 else()
 	CPMAddPackage("gh:geode-sdk/TulipHook#fb5e02c")
 endif()
+
+# TulipHook unconditionally sets CMAKE_OSX_ARCHITECTURES to a universal
+# "arm64;x86_64" on macOS. That produces fat object files, which ld64.lld
+# cannot read from static archives when cross-compiling a single architecture
+# (used by the Docker macOS builds). Pin the dependency targets to the
+# architecture the parent build actually requested.
+if (APPLE AND CMAKE_OSX_ARCHITECTURES)
+	foreach(tulipTarget TulipHook Dobby capstone)
+		if (TARGET ${tulipTarget})
+			set_target_properties(${tulipTarget} PROPERTIES
+				OSX_ARCHITECTURES "${CMAKE_OSX_ARCHITECTURES}"
+			)
+		endif()
+	endforeach()
+endif()
 set(CMAKE_WARN_DEPRECATED ON CACHE BOOL "" FORCE)
 
 include(CheckCXXCompilerFlag)
