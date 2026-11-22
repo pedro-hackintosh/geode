@@ -302,7 +302,12 @@ std::string Loader::Impl::getLaunchCommand() const {
 }
 
 bool Loader::Impl::isModVersionSupported(VersionInfo const& target) {
-    return semverCompare(this->getVersion(), target);
+    auto current = this->getVersion();
+    // Allow mods built for older major versions to keep working (retrocompat).
+    if (target.getMajor() > 0 && target.getMajor() < current.getMajor()) {
+        return true;
+    }
+    return semverCompare(current, target);
 }
 
 bool Loader::Impl::isForwardCompatMode() {

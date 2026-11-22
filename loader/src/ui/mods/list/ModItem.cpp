@@ -196,8 +196,7 @@ bool ModItem::init(ModSource&& source, bool listItem) {
         auto& version = serverMod->latestVersion();
 
         auto geodeValid = Loader::get()->isModVersionSupported(version.getGeodeVersion());
-        auto gameVersion = version.getGameVersion();
-        auto gdValid = !gameVersion || gameVersion == "*" || gameVersion == GEODE_STR(GEODE_GD_VERSION) || (gameVersion == "2.209" && std::string_view(GEODE_STR(GEODE_GD_VERSION)) == "2.2091");
+        auto gdValid = version.checkGameVersion().isOk();
 
         if (!geodeValid || !gdValid) {
             spr = createGeodeButton("N/A", 50, false, true, GeodeButtonSprite::Gray);
@@ -909,7 +908,7 @@ void ModItem::onView(CCObject*) {
                 "OK", nullptr, 360
             )->show();
         }
-        if (gameVersion && gameVersion != "*" && gameVersion != GEODE_STR(GEODE_GD_VERSION) && !(gameVersion == "2.209" && std::string_view(GEODE_STR(GEODE_GD_VERSION)) == "2.2091")) {
+        if (!version.checkGameVersion().isOk()) {
             return FLAlertLayer::create(
                 nullptr,
                 "Unavailable",
